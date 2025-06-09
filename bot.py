@@ -16,7 +16,7 @@ user_filters = {}
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_filters[user_id] = init_user_filters()
-    await update.message.reply_text("Привіт! 👋 Вибери дію:", reply_markup=main_menu_keyboard())
+    await update.message.reply_text("Привіт! 👋 Вибери дію:", reply_markup=main_menu_keyboard(user_filters[user_id]))
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -35,7 +35,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "filters":
         await query.message.reply_text("⚙️ Налаштуй фільтри:", reply_markup=filter_keyboard(user_filters[user_id]))
 
-    elif data.startswith("filter_"):
+    elif data.startswith("filter_") or data.startswith("exchange_"):
         updated_filters = toggle_filter(user_id, data, user_filters[user_id])
         await query.message.edit_reply_markup(reply_markup=filter_keyboard(updated_filters))
 
