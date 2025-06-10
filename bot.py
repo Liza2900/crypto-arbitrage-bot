@@ -8,9 +8,16 @@ from keyboards import main_menu_keyboard, filter_keyboard
 from filters import init_user_filters, toggle_filter
 from arbitrage import find_arbitrage_opportunities
 
+import os
+from dotenv import load_dotenv
+
+# Завантаження змінних середовища
+load_dotenv()
+TOKEN = os.getenv("TOKEN")  # Переконайся, що на Render назва змінної саме "TOKEN"
+
 logging.basicConfig(level=logging.INFO)
 
-# Dictionary for storing filters per user
+# Словник для зберігання фільтрів користувачів
 user_filters = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -39,14 +46,8 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         updated_filters = toggle_filter(user_id, data, user_filters[user_id])
         await query.message.edit_reply_markup(reply_markup=filter_keyboard(updated_filters))
 
-
-if __name__ == "__main__":
-    from dotenv import load_dotenv
-    import os
-
-    load_dotenv()
-    TOKEN = os.getenv("TOKEN")
-
+# Головна точка входу
+if name == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
