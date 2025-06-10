@@ -1,23 +1,24 @@
 import logging
+import os
+from fastapi import FastAPI
+import uvicorn
+
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
-    ContextTypes, MessageHandler, filters
+    ContextTypes
 )
 from keyboards import main_menu_keyboard, filter_keyboard
 from filters import init_user_filters, toggle_filter
 from arbitrage import find_arbitrage_opportunities
 
-import os
 from dotenv import load_dotenv
-
-# Завантаження змінних середовища
 load_dotenv()
-TOKEN = os.getenv("TOKEN")  # Переконайся, що на Render назва змінної саме "TOKEN"
+
+TOKEN = os.getenv("TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 
-# Словник для зберігання фільтрів користувачів
 user_filters = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -46,15 +47,38 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         updated_filters = toggle_filter(user_id, data, user_filters[user_id])
         await query.message.edit_reply_markup(reply_markup=filter_keyboard(updated_filters))
 
-# Головна точка входу
-if __name__ == "__main__":
-    app = ApplicationBuilder().token(TOKEN).build()
+app = FastAPI()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(handle_button))
+@app.get("/ping")
+async def ping():
+    return {"status": "OK"}
 
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 8080)),
-        webhook_url=os.getenv("WEBHOOK_URL")
-    )
+if name == "__main__":
+    from telegram.ext import Application
+
+    application = ApplicationBuilder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(handle_button))
+
+    # Запускаємо Telegram бота
+    import asyncio
+
+    async def main():
+        # Запускаємо бот і FastAPI одночасно
+        import threading
+
+        # Запуск FastAPI у фоновому потоці
+        def start_api():
+            uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+
+        api_thread = threading.Thread(target=start_api, daemon=True)
+        api_thread.start()
+
+        # Запуск Telegram бота з вебхуком
+        await application.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.getenv("PORT", 8080)),
+            webhook_url=os.getenv("WEBHOOK_URL")
+        )
+
+    asyncio.run(main())
