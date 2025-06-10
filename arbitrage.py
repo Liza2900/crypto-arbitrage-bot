@@ -1,77 +1,49 @@
-import random
+import aiohttp
 
-def get_mock_arbitrage_opportunities(user_filters):
-    """
-    Генерує випадкові арбітражні можливості згідно з активними фільтрами користувача.
-    """
+# Біржі
+EXCHANGES = ["KuCoin", "MEXC", "Bitget", "OKX", "BingX", "Gate.io", "Bybit"]
+
+# Псевдо-реалізація функції отримання ціни з API біржі (заглушка)
+async def fetch_price(session, exchange, symbol):
+    url = f"https://api.{exchange.lower()}.com/api/v1/price?symbol={symbol}"
+    try:
+        async with session.get(url, timeout=10) as resp:
+            data = await resp.json()
+            # Тут залежить від структури відповіді конкретної біржі
+            return float(data.get("price"))
+    except:
+        return None
+
+# Основна функція пошуку арбітражних можливостей
+async def find_arbitrage_opportunities(filters):
+    symbols = ["SOL/USDT", "XRP/USDT", "DOGE/USDT"]  # Тимчасово жорстко задані
     opportunities = []
 
-    exchanges_buy = [ex for ex, enabled in user_filters['exchanges_buy'].items() if enabled]
-    exchanges_sell = [ex for ex, enabled in user_filters['exchanges_sell'].items() if enabled]
+    async with aiohttp.ClientSession() as session:
+        for symbol in symbols:
+            prices = {}
+            for ex in EXCHANGES:
+                price = await fetch_price(session, ex, symbol.replace("/", ""))
+                if price:
+                    prices[ex] = price
 
-    if not exchanges_buy or not exchanges_sell:
-        return []
+            for ex_buy in filters["exchanges_buy"]:
+                if not filters["exchanges_buy"][ex_buy] or ex_buy not in prices:
+                    continue
+                for ex_sell in filters["exchanges_sell"]:
+                    if not filters["exchanges_sell"][ex_sell] or ex_sell not in prices:
+                        continue
+                    buy_price = prices[ex_buy]
+                    sell_price = prices[ex_sell]
+                    profit = (sell_price - buy_price) / buy_price * 100
+                    if profit >= filters["min_profit"]:
+                        opportunities.append({
+                            "symbol": symbol,
+                            "buy_exchange": ex_buy,
+                            "sell_exchange": ex_sell,
+                            "buy_price": round(buy_price, 4),
+                            "sell_price": round(sell_price, 4),
+                            "profit": round(profit, 2),
+                        })
 
-    for _ in range(5):
-        buy_exchange = random.choice(exchanges_buy)
-        sell_exchange = random.choice(exchanges_sell)
-        if buy_exchange == sell_exchange:
-            continue
-
-        profit = round(random.uniform(0.5, 3.0), 2)
-        volume = round(random.uniform(50, 500), 2)
-
-        if profit < user_filters['min_profit'] or volume < user_filters['min_volume']:
-            continue
-
-        opportunity = {
-            "symbol": random.choice(["TRX/USDT", "XRP/USDT", "DOGE/USDT"]),
-            "buy_exchange": buy_exchange,
-            "sell_exchange": sell_exchange,
-            "buy_price": round(random.uniform(0.02, 0.2), 5),
-            "sell_price": round(random.uniform(0.03, 0.22), 5),
-            "profit": profit,
-            "volume": volume,
-            "network": random.choice(["TRC20", "ERC20", "BEP20"]),
-            "transfer_time": random.choice(["2 хв", "5 хв", "12 хв"]),
-            "lifespan": random.choice(["15 сек", "1 хв", "3 хв"]),
-            "hedge": random.choice([["Bybit"], ["Gate.io", "KuCoin"], []])
-        }
-
-        opportunities.append(opportunity)
-
-    return opportunities
-
-def format_opportunity_message(op):
-    """
-    Формує повідомлення у стилі арбітражного сигналу.
-    """
-    return f"""
-💰 {op['symbol']}
-Биржи: {op['buy_exchange']} → {op['sell_exchange']}
-Профит: {op['profit']}%
-Объём: {op['volume']}$
-Купить на: [{op['buy_exchange']}]({generate_exchange_link(op['buy_exchange'], op['symbol'])}) по цене *{op['buy_price']}*
-Продать на: [{op['sell_exchange']}]({generate_exchange_link(op['sell_exchange'], op['symbol'])}) по цене *{op['sell_price']}*
-Сеть: {op['network']}
-Время жизни: {op['lifespan']}
-Трансфер: {op['transfer_time']}
-Хеджирование: {', '.join(op['hedge']) if op['hedge'] else 'Немає'}
-    """
-
-def generate_exchange_link(exchange, symbol):
-    """
-    Генерує посилання на торгову пару біржі.
-    """
-    base_urls = {
-        "MEXC": "https://www.mexc.com/exchange",
-        "KuCoin": "https://www.kucoin.com/trade",
-        "Bitget": "https://www.bitget.com/spot",
-        "OKX": "https://www.okx.com/trade-spot",
-        "BingX": "https://bingx.com/en-us/spot",
-        "Gate.io": "https://www.gate.io/trade",
-        "Bybit": "https://www.bybit.com/trade/spot"
-    }
-    if exchange in base_urls:
-        return f"{base_urls[exchange]}/{symbol.replace('/', '_')}"
-    return "#"
+    return sorted(opportunities, key=lambda x: x["profit"], reverse=True)
