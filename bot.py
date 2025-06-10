@@ -53,7 +53,7 @@ app = FastAPI()
 async def ping():
     return {"status": "OK"}
 
-if name == "__main__":
+if __name__ == "__main__":
     from telegram.ext import Application
 
     application = ApplicationBuilder().token(TOKEN).build()
