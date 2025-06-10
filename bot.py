@@ -1,8 +1,6 @@
 import logging
 import os
 from fastapi import FastAPI
-import uvicorn
-
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
@@ -15,12 +13,22 @@ from arbitrage import find_arbitrage_opportunities
 from dotenv import load_dotenv
 load_dotenv()
 
-TOKEN = os.getenv("TOKEN")
-
 logging.basicConfig(level=logging.INFO)
+
+TOKEN = os.getenv("TOKEN")
+PORT = int(os.getenv("PORT", 8080))
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 user_filters = {}
 
+# FastAPI app (для Render ping)
+app = FastAPI()
+
+@app.get("/ping")
+async def ping():
+    return {"status": "OK"}
+
+# Telegram обробники
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_filters[user_id] = init_user_filters()
@@ -39,46 +47,36 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text(msg, parse_mode="HTML")
         else:
             await query.message.reply_text("Арбітраж не знайдено за поточними фільтрами ❌")
-
     elif data == "filters":
         await query.message.reply_text("⚙️ Налаштуй фільтри:", reply_markup=filter_keyboard(user_filters[user_id]))
-
     elif data.startswith("filter_") or data.startswith("exchange_"):
         updated_filters = toggle_filter(user_id, data, user_filters[user_id])
         await query.message.edit_reply_markup(reply_markup=filter_keyboard(updated_filters))
 
-app = FastAPI()
-
-@app.get("/ping")
-async def ping():
-    return {"status": "OK"}
-
-if __name__ == "__main__":
-    from telegram.ext import Application
-
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(handle_button))
-
-    # Запускаємо Telegram бота
+# Запуск Telegram і FastAPI разом
+if name == "__main__":
     import asyncio
+    import uvicorn
 
     async def main():
-        # Запускаємо бот і FastAPI одночасно
-        import threading
+        application = ApplicationBuilder().token(TOKEN).build()
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CallbackQueryHandler(handle_button))
 
-        # Запуск FastAPI у фоновому потоці
-        def start_api():
-            uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
-
-        api_thread = threading.Thread(target=start_api, daemon=True)
-        api_thread.start()
-
-        # Запуск Telegram бота з вебхуком
+        # Запускаємо бота з вебхуком (на Render)
         await application.run_webhook(
             listen="0.0.0.0",
-            port=int(os.getenv("PORT", 8080)),
-            webhook_url=os.getenv("WEBHOOK_URL")
+            port=PORT,
+            webhook_url=WEBHOOK_URL,
+            allowed_updates=Update.ALL_TYPES,
+            stop_signals=None,  # важливо для Render
+            shutdown_on_stop=False  # щоб event loop не закривався
         )
 
-    asyncio.run(main())
+    # Запуск FastAPI та Telegram-бота одночасно
+    def start():
+        loop = asyncio.get_event_loop()
+        loop.create_task(main())
+        uvicorn.run(app, host="0.0.0.0", port=PORT)
+
+    start()
