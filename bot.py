@@ -54,7 +54,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_reply_markup(reply_markup=filter_keyboard(updated_filters))
 
 # Запуск Telegram і FastAPI разом
-if name == "__main__":
+if __name__ == "__main__":
     import asyncio
     import uvicorn
 
