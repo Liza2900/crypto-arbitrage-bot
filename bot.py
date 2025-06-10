@@ -50,7 +50,12 @@ async def set_webhook():
     await application.bot.set_webhook(url=WEBHOOK_URL)
     print("✅ Webhook встановлено:", WEBHOOK_URL)
 
-asyncio.run(set_webhook())
+import asyncio
+
+@app.on_event("startup")
+async def on_startup():
+    await set_webhook()
+
 
 # Run Uvicorn server
 if __name__ == "__main__":
