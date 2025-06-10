@@ -47,7 +47,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_reply_markup(reply_markup=filter_keyboard(updated_filters))
 
 # Головна точка входу
-if name == "__main__":
+if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
