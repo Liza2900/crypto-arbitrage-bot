@@ -3,6 +3,25 @@ import asyncio
 
 EXCHANGES = ['Bybit', 'MEXC', 'KuCoin', 'BingX', 'Gate']
 
+TRADING_FEES = {
+    'KuCoin': 0.001,
+    'MEXC': 0.001,
+    'Bybit': 0.001,
+    'BingX': 0.001,
+    'Gate': 0.002
+}
+
+WITHDRAWAL_FEES = {
+    'USDT': {
+        'KuCoin': {'TRC20': 1, 'ERC20': 25},
+        'MEXC': {'TRC20': 1},
+        'Bybit': {'TRC20': 1},
+        'BingX': {'TRC20': 1},
+        'Gate': {'TRC20': 1}
+    }
+    # Інші монети можна додати пізніше
+}
+
 SYMBOL_ENDPOINTS = {
     'KuCoin': 'https://api.kucoin.com/api/v1/symbols',
     'MEXC': 'https://api.mexc.com/api/v3/exchangeInfo',
@@ -11,125 +30,154 @@ SYMBOL_ENDPOINTS = {
     'Gate': 'https://api.gate.io/api/v4/spot/currency_pairs'
 }
 
-async def fetch_price_kucoin(session, symbol):
-    url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={symbol}"
-    async with session.get(url) as resp:
-        data = await resp.json()
-        return 'KuCoin', float(data['data']['bestBid']), float(data['data']['bestAsk'])
-
-async def fetch_price_mexc(session, symbol):
-    url = f"https://api.mexc.com/api/v3/ticker/bookTicker?symbol={symbol}"
-    async with session.get(url) as resp:
-        data = await resp.json()
-        return 'MEXC', float(data['bidPrice']), float(data['askPrice'])
-
-async def fetch_price_bybit(session, symbol):
-    url = f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={symbol}"
-    async with session.get(url) as resp:
-        data = await resp.json()
-        ticker = data['result']['list'][0]
-        return 'Bybit', float(ticker['bid1Price']), float(ticker['ask1Price'])
-
-async def fetch_price_bingx(session, symbol):
-    url = f"https://open-api.bingx.com/openApi/spot/v1/ticker/24hr?symbol={symbol}"
-    async with session.get(url) as resp:
-        data = await resp.json()
-        return 'BingX', float(data['data']['bidPrice']), float(data['data']['askPrice'])
-
-async def fetch_price_gate(session, symbol):
-    url = f"https://api.gate.io/api/v4/spot/order_book?currency_pair={symbol}&limit=1"
-    async with session.get(url) as resp:
-        data = await resp.json()
-        return 'Gate', float(data['bids'][0][0]), float(data['asks'][0][0])
-
-async def fetch_all_symbols():
-    symbol_map = {}
+async def fetch_withdraw_status():
+    result = {}
     async with aiohttp.ClientSession() as session:
-        kucoin_resp = await session.get(SYMBOL_ENDPOINTS['KuCoin'])
+        # KuCoin
+        kucoin_resp = await session.get("https://api.kucoin.com/api/v1/currencies")
         kucoin_data = await kucoin_resp.json()
-        for item in kucoin_data['data']:
-            if item['quoteCurrency'] == 'USDT':
-                base = item['baseCurrency']
-                symbol_map.setdefault(base, {})['KuCoin'] = item['symbol']
+        result['KuCoin'] = {item['currency']: item['isWithdrawEnabled'] for item in kucoin_data['data']}
 
-        mexc_resp = await session.get(SYMBOL_ENDPOINTS['MEXC'])
-        mexc_data = await mexc_resp.json()
-        for item in mexc_data['symbols']:
-            if item['quoteAsset'] == 'USDT':
-                base = item['baseAsset']
-                symbol_map.setdefault(base, {})['MEXC'] = item['symbol']
-
-        bybit_resp = await session.get(SYMBOL_ENDPOINTS['Bybit'])
+        # Bybit
+        bybit_resp = await session.get("https://api.bybit.com/v5/asset/coin/query-info")
         bybit_data = await bybit_resp.json()
-        for item in bybit_data['result']['list']:
-            if item['quoteCoin'] == 'USDT':
-                base = item['baseCoin']
-                symbol_map.setdefault(base, {})['Bybit'] = item['symbol']
+        result['Bybit'] = {item['name']: any(chain['chainInfo']['chainType'] == 'TRC20' and chain['chainInfo']['canWithdraw'] for chain in item['chains']) for item in bybit_data['result']}
 
-        bingx_resp = await session.get(SYMBOL_ENDPOINTS['BingX'])
-        bingx_data = await bingx_resp.json()
-        for item in bingx_data['data']:
-            if item['quoteAsset'] == 'USDT':
-                base = item['baseAsset']
-                symbol_map.setdefault(base, {})['BingX'] = item['symbol']
-
-        gate_resp = await session.get(SYMBOL_ENDPOINTS['Gate'])
+        # Gate
+        gate_resp = await session.get("https://api.gate.io/api/v4/wallet/currency_chains")
         gate_data = await gate_resp.json()
+        result['Gate'] = {}
         for item in gate_data:
-            if item['quote'] == 'USDT':
-                base = item['base']
-                symbol_map.setdefault(base, {})['Gate'] = item['id']
+            currency = item['currency']
+            withdraw_disabled = item.get('withdraw_disabled', False)
+            result['Gate'][currency.upper()] = not withdraw_disabled
 
-    return symbol_map
+        # MEXC і BingX не мають публічного API на це — будемо вважати, що всі монети доступні
+        result['MEXC'] = {}
+        result['BingX'] = {}
 
-async def generate_arbitrage_signals(filters):
-    signals = []
-    symbol_map = await fetch_all_symbols()
-    coins = [coin for coin, exchanges in symbol_map.items() if len(exchanges) >= 2]
+    return result
 
-    async with aiohttp.ClientSession() as session:
-        for coin in coins:
-            subtasks = []
-            for ex in EXCHANGES:
-                if filters['exchanges_buy'].get(ex, False) or filters['exchanges_sell'].get(ex, False):
-                    if ex not in symbol_map[coin]:
-                        continue
-                    symbol = symbol_map[coin][ex]
-                    if ex == 'KuCoin':
-                        subtasks.append(fetch_price_kucoin(session, symbol))
-                    elif ex == 'MEXC':
-                        subtasks.append(fetch_price_mexc(session, symbol))
-                    elif ex == 'Bybit':
-                        subtasks.append(fetch_price_bybit(session, symbol))
-                    elif ex == 'BingX':
-                        subtasks.append(fetch_price_bingx(session, symbol))
-                    elif ex == 'Gate':
-                        subtasks.append(fetch_price_gate(session, symbol))
 
-            prices = await asyncio.gather(*subtasks, return_exceptions=True)
-            valid_prices = [p for p in prices if not isinstance(p, Exception)]
+def select_best_network_for_transfer(coin, from_exchange, to_exchange):
+    if coin not in WITHDRAWAL_FEES:
+        return None, None
 
-            for buy in valid_prices:
-                for sell in valid_prices:
-                    if buy[0] == sell[0]:
-                        continue
-                    spread = (sell[1] - buy[2]) / buy[2] * 100
-                    if spread >= filters['min_profit']:
-                        signal = {
-                            'coin': coin,
-                            'buy_exchange': buy[0],
-                            'sell_exchange': sell[0],
-                            'spread': round(spread, 2),
-                            'volume': 100,
-                            'buy_price': round(buy[2], 4),
-                            'sell_price': round(sell[1], 4),
-                            'network': coin,
-                            'age': '0с',
-                            'transfer_time': '30с',
-                            'futures_exchanges': []
-                        }
-                        signals.append(signal)
+    coin_networks = WITHDRAWAL_FEES[coin]
+    if from_exchange not in coin_networks:
+        return None, None
 
-    return signals
+    available_networks = coin_networks[from_exchange]
+    best_network = min(available_networks.items(), key=lambda x: x[1])
+    return best_network  # (мережа, комісія)
+
+
+def calculate_net_profit(spread_percent, volume_usd, buy_fee, sell_fee, withdraw_fee):
+    gross_profit = volume_usd * (spread_percent / 100)
+    total_fees = volume_usd * (buy_fee + sell_fee) + withdraw_fee
+    return gross_profit - total_fees
+
+
+def format_arbitrage_message(signal, withdraw_status):
+    coin = signal['coin']
+    buy_ex = signal['buy_exchange']
+    sell_ex = signal['sell_exchange']
+    volume = signal['volume']
+    spread = signal['spread']
+    buy_price = signal['buy_price']
+    sell_price = signal['sell_price']
+
+    buy_fee = TRADING_FEES.get(buy_ex, 0)
+    sell_fee = TRADING_FEES.get(sell_ex, 0)
+
+    network, withdraw_fee = select_best_network_for_transfer(coin='USDT', from_exchange=buy_ex, to_exchange=sell_ex)
+    withdraw_fee = withdraw_fee if withdraw_fee is not None else 0
+
+    withdraw_enabled = withdraw_status.get(buy_ex, {}).get(coin, True)
+
+    net_profit = calculate_net_profit(spread, volume, buy_fee, sell_fee, withdraw_fee)
+
+    message = (
+        f"💰 <b>{coin} Арбітраж</b>\n\n"
+        f"📉 Купівля: {buy_ex} — <code>{buy_price}$</code>\n"
+        f"📈 Продаж: {sell_ex} — <code>{sell_price}$</code>\n"
+        f"📊 Обсяг: <code>{volume}$</code>\n"
+        f"🔁 Спред до комісій: <code>{spread:.2f}%</code>\n"
+        f"💸 Комісії: купівля {buy_fee*100:.2f}%, продаж {sell_fee*100:.2f}%, вивід {withdraw_fee}$\n"
+        f"📦 Через мережу: <code>{network or 'невідомо'}</code>\n"
+        f"✅ Виведення доступне: {'так' if withdraw_enabled else 'ні'}\n\n"
+        f"📈 <b>Чистий прибуток:</b> <code>{net_profit:.2f}$</code>"
+    )
+    return message
+
+
+# --- Меню фільтрів ---
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+def build_filters_menu(filters):
+    keyboard = [
+        [
+            InlineKeyboardButton(f"Мін. профіт: {filters['min_profit']}%", callback_data='set_min_profit'),
+            InlineKeyboardButton(f"Обсяг: {filters['min_volume']}$", callback_data='set_min_volume')
+        ],
+        [
+            InlineKeyboardButton("Бюджет: ${}".format(filters.get('budget', 100)), callback_data='set_budget')
+        ],
+        [
+            InlineKeyboardButton("Биржі покупки", callback_data='toggle_buy_exchanges'),
+            InlineKeyboardButton("Биржі продажу", callback_data='toggle_sell_exchanges')
+        ],
+        [
+            InlineKeyboardButton("🔄 Оновити", callback_data='refresh_signals')
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+# --- Обробка callback-фільтрів ---
+from telegram.ext import CallbackQueryHandler, ContextTypes
+from telegram import Update
+
+async def handle_filter_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    filters = context.user_data.get('filters', {
+        'min_profit': 0.8,
+        'min_volume': 10,
+        'budget': 100,
+        'exchanges_buy': {ex: True for ex in EXCHANGES},
+        'exchanges_sell': {ex: True for ex in EXCHANGES}
+    })
+
+    if query.data == 'set_min_profit':
+        filters['min_profit'] += 0.2
+        if filters['min_profit'] > 5:
+            filters['min_profit'] = 0.8
+
+    elif query.data == 'set_min_volume':
+        filters['min_volume'] += 10
+        if filters['min_volume'] > 100:
+            filters['min_volume'] = 10
+
+    elif query.data == 'set_budget':
+        filters['budget'] *= 2
+        if filters['budget'] > 1000:
+            filters['budget'] = 50
+
+    elif query.data == 'toggle_buy_exchanges':
+        for ex in filters['exchanges_buy']:
+            filters['exchanges_buy'][ex] = not filters['exchanges_buy'][ex]
+
+    elif query.data == 'toggle_sell_exchanges':
+        for ex in filters['exchanges_sell']:
+            filters['exchanges_sell'][ex] = not filters['exchanges_sell'][ex]
+
+    context.user_data['filters'] = filters
+    await query.edit_message_reply_markup(reply_markup=build_filters_menu(filters))
+
+
+# --- Далі: логіка пошуку арбітражу ---
+# В наступному кроці буде додано fetch_prices_from_exchanges() та find_arbitrage_opportunities()
 
 
