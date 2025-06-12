@@ -48,8 +48,17 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filters = context.user_data.get('filters', default_filters())
     await update.message.reply_text("⏳ Пошук можливостей арбітражу...")
 
+    logger.info("🔎 Починаємо завантаження цін з бірж...")
     prices = await fetch_prices_from_exchanges()
+    logger.info(f"✅ Отримано ціни: {len(prices)} монет")
+
+    if not prices:
+        await update.message.reply_text("⚠️ Не вдалося отримати ціни з бірж.")
+        return
+
+    logger.info("📊 Шукаємо можливості арбітражу...")
     signals = find_arbitrage_opportunities(prices, filters)
+    logger.info(f"✅ Знайдено {len(signals)} можливих сигналів")
 
     if not signals:
         await update.message.reply_text("❌ Немає можливостей арбітражу за поточними фільтрами.")
