@@ -1,74 +1,55 @@
-import asyncio
-from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from filters import (
-    fetch_prices_from_exchanges,
-    find_arbitrage_opportunities,
-    build_filters_menu,
-    handle_filter_callback,
-    EXCHANGES
-)
+import random
 
-TOKEN = "YOUR_BOT_TOKEN"
+EXCHANGES = ["KuCoin", "MEXC", "OKX", "Bitget", "BingX", "Gate.io", "Bybit"]
 
-# Початкові фільтри за замовчуванням
-def default_filters():
-    return {
-        'min_profit': 0.8,
-        'min_volume': 10,
-        'budget': 100,
-        'is_futures': False,
-        'exchanges_buy': {ex: True for ex in EXCHANGES},
-        'exchanges_sell': {ex: True for ex in EXCHANGES},
-        'max_lifetime': 30
-    }
+# Імітація отримання цін з API бірж
+async def fetch_prices_from_exchanges():
+    coins = ["BTC", "ETH", "XRP", "SOL", "DOGE"]
+    prices = {}
+    for exchange in EXCHANGES:
+        prices[exchange] = {}
+        for coin in coins:
+            prices[exchange][coin] = {
+                "price": round(random.uniform(0.5, 15), 4),
+                "volume": round(random.uniform(10, 1000), 2),
+                "withdraw_fee": round(random.uniform(0.1, 1.0), 2),
+                "network": "TRC20",
+                "is_withdrawable": True,
+                "transfer_time": f"{random.randint(5, 30)} min"
+            }
+    return prices
 
-# Команда /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['filters'] = default_filters()
-    await update.message.reply_text("🔍 Виберіть фільтри для пошуку арбітражу:",
-                                    reply_markup=build_filters_menu(context.user_data['filters']))
+# Пошук можливостей арбітражу
+def find_arbitrage_opportunities(prices, filters):
+    opportunities = []
+    for coin in prices[EXCHANGES[0]]:
+        for buy_ex in EXCHANGES:
+            for sell_ex in EXCHANGES:
+                if buy_ex == sell_ex:
+                    continue
+                if not filters['exchanges_buy'].get(buy_ex, True):
+                    continue
+                if not filters['exchanges_sell'].get(sell_ex, True):
+                    continue
 
-# Обробка /search — знаходить сигнали і надсилає
-async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    filters = context.user_data.get('filters', default_filters())
-    await update.message.reply_text("⏳ Пошук можливостей арбітражу...")
-    
-    prices = await fetch_prices_from_exchanges()
-    signals = find_arbitrage_opportunities(prices, filters)
+                buy_data = prices[buy_ex].get(coin)
+                sell_data = prices[sell_ex].get(coin)
+                if not buy_data or not sell_data:
+                    continue
 
-    if not signals:
-        await update.message.reply_text("❌ Немає можливостей арбітражу за поточними фільтрами.")
-    else:
-        for sig in signals:
-            msg = (
-                f"💰 {sig['coin']} Арбітраж
-"
-                f"Купити на: {sig['buy_exchange']} — ${sig['buy_price']:.4f}
-"
-                f"Продати на: {sig['sell_exchange']} — ${sig['sell_price']:.4f}
-"
-                f"🔁 Мережа: {sig['network']}, Комісія: ${sig['withdraw_fee']}
-"
-                f"📊 Спред: {sig['spread']}%
-"
-                f"📦 Обсяг: ${sig['volume']}")
-            await update.message.reply_text(msg)
-
-# Головна функція запуску
-async def main():
-    app = Application.builder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("search", search))
-    app.add_handler(CallbackQueryHandler(handle_filter_callback))
-
-    print("🚀 Бот запущено")
-    await app.run_polling()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
-
-
-
+                spread = ((sell_data['price'] - buy_data['price']) / buy_data['price']) * 100
+                if spread >= filters['min_profit'] and buy_data['volume'] >= filters['min_volume']:
+                    opportunities.append({
+                        "coin": coin,
+                        "buy_exchange": buy_ex,
+                        "sell_exchange": sell_ex,
+                        "buy_price": buy_data['price'],
+                        "sell_price": sell_data['price'],
+                        "spread": round(spread, 2),
+                        "volume": buy_data['volume'],
+                        "network": buy_data['network'],
+                        "withdraw_fee": buy_data['withdraw_fee'],
+                        "is_withdrawable": buy_data['is_withdrawable'],
+                        "transfer_time": buy_data['transfer_time']
+                    })
+    return opportunities
