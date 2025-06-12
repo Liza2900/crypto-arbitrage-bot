@@ -20,8 +20,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Змінні середовища
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # наприклад: https://your-service.onrender.com/
+BOT_TOKEN = os.getenv("BOT_TOKEN", "your-real-bot-token")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://your-service.onrender.com/")
 
 if not BOT_TOKEN or not WEBHOOK_URL:
     raise RuntimeError("BOT_TOKEN або WEBHOOK_URL не встановлено")
@@ -76,25 +76,28 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await update.message.reply_text(msg, parse_mode='HTML')
 
-# Додаємо обробники
+# Реєстрація обробників
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("search", search))
 application.add_handler(CallbackQueryHandler(handle_filter_callback))
 
-# FastAPI Lifespan для запуску Telegram Webhook
+# Подія запуску FastAPI
 @app.on_event("startup")
-async def startup():
+async def on_startup():
     await application.initialize()
-    await application.bot.set_webhook(WEBHOOK_URL)
-    logger.info("📡 Webhook встановлено")
+    await application.bot.set_webhook(url=WEBHOOK_URL)
+    logger.info("✅ Webhook встановлено")
 
+# Webhook endpoint
 @app.post("/")
-async def telegram_webhook(request: Request):
-    data = await request.json()
+async def telegram_webhook(req: Request):
+    data = await req.json()
     update = Update.de_json(data, application.bot)
     await application.process_update(update)
     return {"ok": True}
 
+# Перевірка сервісу
 @app.get("/")
 def root():
-    return {"message": "Bot is alive"}
+    return {"status": "Bot is running"}
+
