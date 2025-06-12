@@ -1,116 +1,51 @@
-import os
-import logging
-from fastapi import FastAPI, Request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from filters import (
-    fetch_prices_from_exchanges,
-    find_arbitrage_opportunities,
-    build_filters_menu,
-    handle_filter_callback,
-    EXCHANGES
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from arbitrage import EXCHANGES
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+def build_filters_menu(filters):
+    buttons = [
+        [InlineKeyboardButton(f"💰 Мін. профіт: {filters['min_profit']}%", callback_data="set_min_profit")],
+        [InlineKeyboardButton(f"📦 Мін. обсяг: {filters['min_volume']}$", callback_data="set_min_volume")],
+        [InlineKeyboardButton(f"💼 Бюджет: {filters['budget']}$", callback_data="set_budget")],
+        [InlineKeyboardButton(f"📈 Ф’ючерси: {'Так' if filters['is_futures'] else 'Ні'}", callback_data="toggle_futures")],
+        [InlineKeyboardButton("🔁 Біржі покупки", callback_data="edit_exchanges_buy")],
+        [InlineKeyboardButton("🔁 Біржі продажу", callback_data="edit_exchanges_sell")],
+        [InlineKeyboardButton(f"⏱ Макс. час життя: {filters['max_lifetime']}с", callback_data="set_max_lifetime")]
+    ]
+    return InlineKeyboardMarkup(buttons)
 
-# Змінні середовища
-TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", 10000))
+async def handle_filter_callback(update, context):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
 
-if not TOKEN:
-    raise ValueError("BOT_TOKEN не встановлено в середовищі")
-if not WEBHOOK_URL:
-    raise ValueError("WEBHOOK_URL не встановлено в середовищі")
+    filters = context.user_data.get('filters', {})
+    if not filters:
+        filters = {
+            'min_profit': 0.8,
+            'min_volume': 10,
+            'budget': 100,
+            'is_futures': False,
+            'exchanges_buy': {ex: True for ex in EXCHANGES},
+            'exchanges_sell': {ex: True for ex in EXCHANGES},
+            'max_lifetime': 30
+        }
 
-# Початкові фільтри за замовчуванням
-def default_filters():
-    return {
-        'min_profit': 0.8,
-        'min_volume': 10,
-        'budget': 100,
-        'is_futures': False,
-        'exchanges_buy': {ex: True for ex in EXCHANGES},
-        'exchanges_sell': {ex: True for ex in EXCHANGES},
-        'max_lifetime': 30
-    }
-
-# Команда /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['filters'] = default_filters()
-    await update.message.reply_text("🔍 Виберіть фільтри для пошуку арбітражу:",
-                                    reply_markup=build_filters_menu(context.user_data['filters']))
-
-# Команда /filters
-async def filters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    filters = context.user_data.get('filters', default_filters())
-    await update.message.reply_text("🔧 Змініть фільтри для пошуку арбітражу:",
-                                    reply_markup=build_filters_menu(filters))
-
-# Команда /search
-async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    filters = context.user_data.get('filters', default_filters())
-    await update.message.reply_text("⏳ Пошук можливостей арбітражу...")
-
-    logger.info("🔎 Починаємо завантаження цін з бірж...")
-    prices = await fetch_prices_from_exchanges()
-    total_pairs = sum(len(p) for p in prices.values())
-    logger.info(f"✅ Отримано ціни: {total_pairs} валютних пар")
-
-    if not prices:
-        await update.message.reply_text("⚠️ Не вдалося отримати ціни з бірж.")
+    if data == "toggle_futures":
+        filters['is_futures'] = not filters['is_futures']
+    elif data == "set_min_profit":
+        filters['min_profit'] = round(filters['min_profit'] + 0.1, 1)
+    elif data == "set_min_volume":
+        filters['min_volume'] += 10
+    elif data == "set_budget":
+        filters['budget'] += 50
+    elif data == "set_max_lifetime":
+        filters['max_lifetime'] += 10
+    elif data == "edit_exchanges_buy":
+        await query.edit_message_text("⚙️ Налаштування бірж купівлі: (не реалізовано)")
+        return
+    elif data == "edit_exchanges_sell":
+        await query.edit_message_text("⚙️ Налаштування бірж продажу: (не реалізовано)")
         return
 
-    logger.info("📊 Шукаємо можливості арбітражу...")
-    signals = find_arbitrage_opportunities(prices, filters)
-    logger.info(f"✅ Знайдено {len(signals)} можливих сигналів")
-
-    if not signals:
-        await update.message.reply_text("❌ Немає можливостей арбітражу за поточними фільтрами.")
-    else:
-        for sig in signals:
-            net_profit = (sig['spread'] / 100) * filters['budget'] - sig['withdraw_fee']
-            msg = (
-                f"💰 <b>{sig['coin']} Арбітраж</b>\n"
-                f"📉 Купити на: <b>{sig['buy_exchange']}</b> — <code>${sig['buy_price']:.4f}</code>\n"
-                f"📈 Продати на: <b>{sig['sell_exchange']}</b> — <code>${sig['sell_price']:.4f}</code>\n"
-                f"📦 Обсяг: <code>${sig['volume']}</code>\n"
-                f"🔁 Мережа: <b>{sig['network']}</b>\n"
-                f"💸 Комісія виводу: <code>${sig['withdraw_fee']}</code>\n"
-                f"📊 Спред після комісії: <code>{net_profit:.2f}$ ({sig['spread']}%)</code>\n"
-                f"✅ Вивід доступний: <b>{'✅' if sig.get('is_withdrawable', True) else '❌'}</b>\n"
-                f"⏱ Час переказу: <code>{sig.get('transfer_time', 'N/A')}</code>\n"
-            )
-            await update.message.reply_text(msg, parse_mode='HTML')
-
-# FastAPI app
-app = FastAPI()
-application = Application.builder().token(TOKEN).build()
-
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("search", search))
-application.add_handler(CommandHandler("filters", filters_command))
-application.add_handler(CallbackQueryHandler(handle_filter_callback))
-
-@app.on_event("startup")
-async def startup():
-    await application.initialize()
-    await application.bot.set_webhook(url=WEBHOOK_URL)
-    logging.info("Webhook встановлено")
-
-@app.post("/")
-async def telegram_webhook(req: Request):
-    data = await req.json()
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
-    return {"status": "ok"}
-
-@app.get("/")
-def root():
-    return {"message": "Bot is alive!"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("bot:app", host="0.0.0.0", port=PORT, reload=False)
+    context.user_data['filters'] = filters
+    await query.edit_message_reply_markup(reply_markup=build_filters_menu(filters))
