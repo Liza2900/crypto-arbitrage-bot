@@ -2,11 +2,7 @@ import os
 import logging
 from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import (
-    Application, ApplicationBuilder,
-    CommandHandler, CallbackQueryHandler,
-    ContextTypes
-)
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from filters import (
     fetch_prices_from_exchanges,
     find_arbitrage_opportunities,
@@ -15,24 +11,21 @@ from filters import (
     EXCHANGES
 )
 
-# Логування
+# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Змінні середовища
-BOT_TOKEN = os.getenv("BOT_TOKEN", "your-real-bot-token")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://your-service.onrender.com/")
+TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+PORT = int(os.getenv("PORT", 10000))
 
-if not BOT_TOKEN or not WEBHOOK_URL:
-    raise RuntimeError("BOT_TOKEN або WEBHOOK_URL не встановлено")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN не встановлено в середовищі")
+if not WEBHOOK_URL:
+    raise ValueError("WEBHOOK_URL не встановлено в середовищі")
 
-# FastAPI сервер
-app = FastAPI()
-
-# Telegram Application
-application: Application = ApplicationBuilder().token(BOT_TOKEN).build()
-
-# Початкові фільтри
+# Початкові фільтри за замовчуванням
 def default_filters():
     return {
         'min_profit': 0.8,
@@ -44,13 +37,13 @@ def default_filters():
         'max_lifetime': 30
     }
 
-# /start
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['filters'] = default_filters()
     await update.message.reply_text("🔍 Виберіть фільтри для пошуку арбітражу:",
                                     reply_markup=build_filters_menu(context.user_data['filters']))
 
-# /search
+# Команда /search
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filters = context.user_data.get('filters', default_filters())
     await update.message.reply_text("⏳ Пошук можливостей арбітражу...")
@@ -76,28 +69,31 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await update.message.reply_text(msg, parse_mode='HTML')
 
-# Реєстрація обробників
+# FastAPI app
+app = FastAPI()
+application = Application.builder().token(TOKEN).build()
+
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("search", search))
 application.add_handler(CallbackQueryHandler(handle_filter_callback))
 
-# Подія запуску FastAPI
 @app.on_event("startup")
-async def on_startup():
+async def startup():
     await application.initialize()
     await application.bot.set_webhook(url=WEBHOOK_URL)
-    logger.info("✅ Webhook встановлено")
+    logging.info("Webhook встановлено")
 
-# Webhook endpoint
 @app.post("/")
 async def telegram_webhook(req: Request):
     data = await req.json()
     update = Update.de_json(data, application.bot)
     await application.process_update(update)
-    return {"ok": True}
+    return {"status": "ok"}
 
-# Перевірка сервісу
 @app.get("/")
 def root():
-    return {"status": "Bot is running"}
+    return {"message": "Bot is alive!"}
 
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("bot:app", host="0.0.0.0", port=PORT, reload=False)
