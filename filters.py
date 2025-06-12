@@ -1,6 +1,9 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from arbitrage import EXCHANGES
 
+# Біржі
+EXCHANGES = ["KuCoin", "MEXC", "Bitget", "OKX", "BingX", "Gate.io", "Bybit"]
+
+# Меню фільтрів
 def build_filters_menu(filters):
     buttons = [
         [InlineKeyboardButton(f"💰 Мін. профіт: {filters['min_profit']}%", callback_data="set_min_profit")],
@@ -13,6 +16,7 @@ def build_filters_menu(filters):
     ]
     return InlineKeyboardMarkup(buttons)
 
+# Обробка натискань фільтрів
 async def handle_filter_callback(update, context):
     query = update.callback_query
     await query.answer()
@@ -49,3 +53,37 @@ async def handle_filter_callback(update, context):
 
     context.user_data['filters'] = filters
     await query.edit_message_reply_markup(reply_markup=build_filters_menu(filters))
+
+# Заглушка — заміни пізніше реальною логікою з arbitrage.py
+async def fetch_prices_from_exchanges():
+    return {
+        "KuCoin": [
+            {"symbol": "DOGE/USDT", "price": 0.125, "volume": 1000},
+        ],
+        "MEXC": [
+            {"symbol": "DOGE/USDT", "price": 0.128, "volume": 1200},
+        ]
+    }
+
+def find_arbitrage_opportunities(prices, filters):
+    opportunities = []
+    for coin in ["DOGE"]:
+        kucoin_price = next((x['price'] for x in prices["KuCoin"] if coin in x['symbol']), None)
+        mexc_price = next((x['price'] for x in prices["MEXC"] if coin in x['symbol']), None)
+        if kucoin_price and mexc_price:
+            spread = ((mexc_price - kucoin_price) / kucoin_price) * 100
+            if spread >= filters['min_profit']:
+                opportunities.append({
+                    'coin': coin,
+                    'buy_exchange': "KuCoin",
+                    'sell_exchange': "MEXC",
+                    'buy_price': kucoin_price,
+                    'sell_price': mexc_price,
+                    'spread': round(spread, 2),
+                    'volume': 100,
+                    'network': "TRC20",
+                    'withdraw_fee': 1.0,
+                    'is_withdrawable': True,
+                    'transfer_time': "5 хв"
+                })
+    return opportunities
