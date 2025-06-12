@@ -50,7 +50,8 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info("🔎 Починаємо завантаження цін з бірж...")
     prices = await fetch_prices_from_exchanges()
-    logger.info(f"✅ Отримано ціни: {len(prices)} монет")
+    total_pairs = sum(len(p) for p in prices.values())
+    logger.info(f"✅ Отримано ціни: {total_pairs} валютних пар")
 
     if not prices:
         await update.message.reply_text("⚠️ Не вдалося отримати ціни з бірж.")
