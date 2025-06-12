@@ -43,6 +43,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔍 Виберіть фільтри для пошуку арбітражу:",
                                     reply_markup=build_filters_menu(context.user_data['filters']))
 
+# Команда /filters
+async def filters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    filters = context.user_data.get('filters', default_filters())
+    await update.message.reply_text("🔧 Змініть фільтри для пошуку арбітражу:",
+                                    reply_markup=build_filters_menu(filters))
+
 # Команда /search
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filters = context.user_data.get('filters', default_filters())
@@ -85,6 +91,7 @@ application = Application.builder().token(TOKEN).build()
 
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("search", search))
+application.add_handler(CommandHandler("filters", filters_command))
 application.add_handler(CallbackQueryHandler(handle_filter_callback))
 
 @app.on_event("startup")
