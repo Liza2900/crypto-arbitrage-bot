@@ -1,10 +1,10 @@
-import logging
 import os
+import logging
+from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
+    Application, ApplicationBuilder,
+    CommandHandler, CallbackQueryHandler,
     ContextTypes
 )
 from filters import (
@@ -14,26 +14,25 @@ from filters import (
     handle_filter_callback,
     EXCHANGES
 )
-from fastapi import FastAPI, Request
-import asyncio
 
-# Логи
+# Логування
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Змінні середовища
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # наприклад: https://your-service.onrender.com/
 
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN не встановлено")
-if not WEBHOOK_URL:
-    raise ValueError("WEBHOOK_URL не встановлено")
+if not BOT_TOKEN or not WEBHOOK_URL:
+    raise RuntimeError("BOT_TOKEN або WEBHOOK_URL не встановлено")
+
+# FastAPI сервер
+app = FastAPI()
 
 # Telegram Application
-application = ApplicationBuilder().token(BOT_TOKEN).build()
+application: Application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# Стандартні фільтри
+# Початкові фільтри
 def default_filters():
     return {
         'min_profit': 0.8,
@@ -82,23 +81,20 @@ application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("search", search))
 application.add_handler(CallbackQueryHandler(handle_filter_callback))
 
-# FastAPI app
-app = FastAPI()
-
+# FastAPI Lifespan для запуску Telegram Webhook
 @app.on_event("startup")
 async def startup():
     await application.initialize()
-    await application.bot.set_webhook(url=WEBHOOK_URL)
-    logging.info("Webhook встановлено")
+    await application.bot.set_webhook(WEBHOOK_URL)
+    logger.info("📡 Webhook встановлено")
 
 @app.post("/")
-async def webhook_handler(request: Request):
+async def telegram_webhook(request: Request):
     data = await request.json()
     update = Update.de_json(data, application.bot)
     await application.process_update(update)
-    return {"status": "ok"}
+    return {"ok": True}
 
 @app.get("/")
-def home():
-    return {"message": "Arbitrage Bot is running"}
-
+def root():
+    return {"message": "Bot is alive"}
