@@ -33,7 +33,8 @@ def default_filters():
         'is_futures': False,
         'exchanges_buy': {ex: True for ex in EXCHANGES},
         'exchanges_sell': {ex: True for ex in EXCHANGES},
-        'max_lifetime': 30
+        'max_lifetime': 30,
+        'last_search_id': None  # додано для захисту від повторної обробки
     }
 
 # Команда /start
@@ -51,6 +52,14 @@ async def filters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Команда /search
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filters = context.user_data.get('filters', default_filters())
+
+    # Унікальний ID для кожного запиту
+    search_id = update.update_id
+    if filters.get("last_search_id") == search_id:
+        logger.info("🔁 Повторний запит /search — ігноруємо")
+        return
+    filters["last_search_id"] = search_id
+
     await update.message.reply_text("⏳ Пошук можливостей арбітражу...")
 
     logger.info("🔎 Починаємо завантаження цін з бірж...")
@@ -69,20 +78,21 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not signals:
         await update.message.reply_text("❌ Немає можливостей арбітражу за поточними фільтрами.")
     else:
-        for sig in signals:
-            net_profit = (sig['spread'] / 100) * filters['budget'] - sig['withdraw_fee']
-            msg = (
-                f"💰 <b>{sig['coin']} Арбітраж</b>\n"
-                f"📉 Купити на: <b>{sig['buy_exchange']}</b> — <code>${sig['buy_price']:.4f}</code>\n"
-                f"📈 Продати на: <b>{sig['sell_exchange']}</b> — <code>${sig['sell_price']:.4f}</code>\n"
-                f"📦 Обсяг: <code>${sig['volume']}</code>\n"
-                f"🔁 Мережа: <b>{sig['network']}</b>\n"
-                f"💸 Комісія виводу: <code>${sig['withdraw_fee']}</code>\n"
-                f"📊 Спред після комісії: <code>{net_profit:.2f}$ ({sig['spread']}%)</code>\n"
-                f"✅ Вивід доступний: <b>{'✅' if sig.get('is_withdrawable', True) else '❌'}</b>\n"
-                f"⏱ Час переказу: <code>{sig.get('transfer_time', 'N/A')}</code>\n"
-            )
-            await update.message.reply_text(msg, parse_mode='HTML')
+        sig = signals[0]  # Надсилаємо тільки перший спред
+        net_profit = (sig['spread'] / 100) * filters['budget'] - sig['withdraw_fee']
+        msg = (
+            f"💰 <b>{sig['coin']} Арбітраж</b>\n"
+            f"📉 Купити на: <b>{sig['buy_exchange']}</b> — <code>${sig['buy_price']:.4f}</code>\n"
+            f"📈 Продати на: <b>{sig['sell_exchange']}</b> — <code>${sig['sell_price']:.4f}</code>\n"
+            f"📦 Обсяг: <code>${sig['volume']}</code>\n"
+            f"🔁 Мережа: <b>{sig['network']}</b>\n"
+            f"💸 Комісія виводу: <code>${sig['withdraw_fee']}</code>\n"
+            f"📊 Спред після комісії: <code>{net_profit:.2f}$ ({sig['spread']}%)</code>\n"
+            f"✅ Вивід доступний: <b>{'✅' if sig.get('is_withdrawable', True) else '❌'}</b>\n"
+            f"⏱ Час переказу: <code>{sig.get('transfer_time', 'N/A')}</code>\n"
+        )
+        logger.info(f"📤 Надсилаємо арбітраж для {sig['coin']}")
+        await update.message.reply_text(msg, parse_mode='HTML')
 
 # FastAPI app
 app = FastAPI()
