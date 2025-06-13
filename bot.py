@@ -4,12 +4,11 @@ from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from filters import (
-    fetch_prices_from_exchanges,
-    find_arbitrage_opportunities,
     build_filters_menu,
     handle_filter_callback,
     EXCHANGES
 )
+from arbitrage import fetch_prices_from_exchanges, find_arbitrage_opportunities
 
 # Logging
 logging.basicConfig(level=logging.INFO)
