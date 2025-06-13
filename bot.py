@@ -1,7 +1,7 @@
 import os
 import logging
 from fastapi import FastAPI, Request
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from filters import (
     build_filters_menu,
@@ -34,7 +34,7 @@ def default_filters():
         'exchanges_buy': {ex: True for ex in EXCHANGES},
         'exchanges_sell': {ex: True for ex in EXCHANGES},
         'max_lifetime': 30,
-        'last_search_id': None  # додано для захисту від повторної обробки
+        'last_search_id': None
     }
 
 # Команда /start
@@ -53,7 +53,6 @@ async def filters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filters = context.user_data.get('filters', default_filters())
 
-    # Унікальний ID для кожного запиту
     search_id = update.update_id
     if filters.get("last_search_id") == search_id:
         logger.info("🔁 Повторний запит /search — ігноруємо")
@@ -75,24 +74,47 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     signals = find_arbitrage_opportunities(prices, filters)
     logger.info(f"✅ Знайдено {len(signals)} можливих сигналів")
 
+    # Фільтруємо великі монети
+    signals = [s for s in signals if s['coin'] not in ('BTC', 'ETH')]
+
     if not signals:
         await update.message.reply_text("❌ Немає можливостей арбітражу за поточними фільтрами.")
-    else:
-        sig = signals[0]  # Надсилаємо тільки перший спред
-        net_profit = (sig['spread'] / 100) * filters['budget'] - sig['withdraw_fee']
-        msg = (
-            f"💰 <b>{sig['coin']} Арбітраж</b>\n"
-            f"📉 Купити на: <b>{sig['buy_exchange']}</b> — <code>${sig['buy_price']:.4f}</code>\n"
-            f"📈 Продати на: <b>{sig['sell_exchange']}</b> — <code>${sig['sell_price']:.4f}</code>\n"
-            f"📦 Обсяг: <code>${sig['volume']}</code>\n"
-            f"🔁 Мережа: <b>{sig['network']}</b>\n"
-            f"💸 Комісія виводу: <code>${sig['withdraw_fee']}</code>\n"
-            f"📊 Спред після комісії: <code>{net_profit:.2f}$ ({sig['spread']}%)</code>\n"
-            f"✅ Вивід доступний: <b>{'✅' if sig.get('is_withdrawable', True) else '❌'}</b>\n"
-            f"⏱ Час переказу: <code>{sig.get('transfer_time', 'N/A')}</code>\n"
-        )
-        logger.info(f"📤 Надсилаємо арбітраж для {sig['coin']}")
-        await update.message.reply_text(msg, parse_mode='HTML')
+        return
+
+    context.user_data['signals'] = signals
+    context.user_data['signal_index'] = 0
+
+    await send_signal(update.message.reply_text, signals[0], filters)
+
+async def send_signal(send_func, signal, filters):
+    net_profit = (signal['spread'] / 100) * filters['budget'] - signal['withdraw_fee']
+    msg = (
+        f"💰 <b>{signal['coin']} Арбітраж</b>\n"
+        f"📉 Купити на: <b>{signal['buy_exchange']}</b> — <code>${int(signal['buy_price'])}</code>\n"
+        f"📈 Продати на: <b>{signal['sell_exchange']}</b> — <code>${int(signal['sell_price'])}</code>\n"
+        f"📦 Обсяг: <code>${int(signal['volume'])}</code>\n"
+        f"📊 Ціна за 1 монету: Купівля — <code>${signal['buy_price']:.4f}</code>, Продаж — <code>${signal['sell_price']:.4f}</code>\n"
+        f"🔁 Мережа: <b>{signal['network']}</b>\n"
+        f"💸 Комісія виводу: <code>${signal['withdraw_fee']}</code>\n"
+        f"📊 Спред після комісії: <code>{net_profit:.2f}$ ({signal['spread']}%)</code>\n"
+        f"✅ Вивід доступний: <b>{'✅' if signal.get('is_withdrawable', True) else '❌'}</b>\n"
+        f"⏱ Час переказу: <code>{signal.get('transfer_time', 'N/A')}</code>\n"
+    )
+    keyboard = [[InlineKeyboardButton("➡️ Наступний", callback_data="next_signal")]]
+    await send_func(msg, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def handle_next_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    index = context.user_data.get('signal_index', 0) + 1
+    signals = context.user_data.get('signals', [])
+
+    if index >= len(signals):
+        await query.edit_message_text("✅ Це був останній сигнал.")
+        return
+
+    context.user_data['signal_index'] = index
+    await send_signal(query.edit_message_text, signals[index], context.user_data.get('filters', default_filters()))
 
 # FastAPI app
 app = FastAPI()
@@ -102,6 +124,7 @@ application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("search", search))
 application.add_handler(CommandHandler("filters", filters_command))
 application.add_handler(CallbackQueryHandler(handle_filter_callback))
+application.add_handler(CallbackQueryHandler(handle_next_signal, pattern="^next_signal$"))
 
 @app.on_event("startup")
 async def startup():
