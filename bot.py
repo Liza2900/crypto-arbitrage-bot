@@ -1,8 +1,8 @@
 import os
 import logging
 from fastapi import FastAPI, Request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters as tg_filters, ContextTypes
 from filters import (
     build_filters_menu,
     handle_filter_callback,
@@ -28,7 +28,6 @@ if not WEBHOOK_URL:
 def default_filters():
     return {
         'min_profit': 0.8,
-        'min_volume': 10,
         'budget': 100,
         'is_futures': False,
         'exchanges_buy': {ex: True for ex in EXCHANGES},
@@ -40,14 +39,41 @@ def default_filters():
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['filters'] = default_filters()
+    keyboard = ReplyKeyboardMarkup(
+        [[KeyboardButton("🔧 Фільтри"), KeyboardButton("🔍 Пошук")]],
+        resize_keyboard=True
+    )
     await update.message.reply_text("🔍 Виберіть фільтри для пошуку арбітражу:",
+                                    reply_markup=keyboard)
+    await update.message.reply_text("⬇️ Меню фільтрів:",
                                     reply_markup=build_filters_menu(context.user_data['filters']))
 
-# Команда /filters
-async def filters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Обробка текстових кнопок
+async def handle_text_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == "🔧 Фільтри":
+        filters = context.user_data.get('filters', default_filters())
+        await update.message.reply_text("🔧 Змініть фільтри для пошуку арбітражу:",
+                                        reply_markup=build_filters_menu(filters))
+    elif update.message.text == "🔍 Пошук":
+        await search(update, context)
+
+# Обробка введення вручну
+async def handle_manual_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if 'awaiting_input' not in context.user_data:
+        return
+
+    field = context.user_data.pop('awaiting_input')
+    text = update.message.text
+
+    try:
+        value = float(text)
+    except ValueError:
+        await update.message.reply_text("❌ Введіть число.")
+        return
+
     filters = context.user_data.get('filters', default_filters())
-    await update.message.reply_text("🔧 Змініть фільтри для пошуку арбітражу:",
-                                    reply_markup=build_filters_menu(filters))
+    filters[field] = value
+    await update.message.reply_text("✅ Змінено фільтр.", reply_markup=build_filters_menu(filters))
 
 # Команда /search
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -122,9 +148,11 @@ application = Application.builder().token(TOKEN).build()
 
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("search", search))
-application.add_handler(CommandHandler("filters", filters_command))
+application.add_handler(CommandHandler("filters", handle_text_commands))
 application.add_handler(CallbackQueryHandler(handle_filter_callback))
 application.add_handler(CallbackQueryHandler(handle_next_signal, pattern="^next_signal$"))
+application.add_handler(MessageHandler(tg_filters.TEXT & (~tg_filters.COMMAND), handle_text_commands))
+application.add_handler(MessageHandler(tg_filters.TEXT & (~tg_filters.COMMAND), handle_manual_input))
 
 @app.on_event("startup")
 async def startup():
