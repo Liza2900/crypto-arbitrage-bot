@@ -1,28 +1,49 @@
-import random
+import ccxt
+import asyncio
 
-EXCHANGES = ["KuCoin", "MEXC", "OKX", "Bitget", "BingX", "Gate.io", "Bybit"]
+# Біржі для арбітражу
+EXCHANGES = {
+    "KuCoin": ccxt.kucoin(),
+    "MEXC": ccxt.mexc(),
+    "OKX": ccxt.okx(),
+    "Bitget": ccxt.bitget(),
+    "BingX": ccxt.bingx(),
+    "Gate.io": ccxt.gateio(),
+    "Bybit": ccxt.bybit(),
+}
 
-# Імітація отримання цін з API бірж
+# Менш ліквідні та нові монети (без BTC та ETH)
+COINS = ["ARB", "TRX", "DOGE", "SOL", "XRP", "ALGO", "LINK"]
+
+# Асинхронне отримання цін з усіх бірж
 async def fetch_prices_from_exchanges():
-    coins = ["BTC", "ETH", "XRP", "SOL", "DOGE"]
     prices = {}
-    for exchange in EXCHANGES:
-        prices[exchange] = {}
-        for coin in coins:
-            prices[exchange][coin] = {
-                "price": round(random.uniform(0.5, 15), 4),
-                "volume": round(random.uniform(10, 1000), 2),
-                "withdraw_fee": round(random.uniform(0.1, 1.0), 2),
-                "network": "TRC20",
-                "is_withdrawable": True,
-                "transfer_time": f"{random.randint(5, 30)} min"
-            }
+    for name, exchange in EXCHANGES.items():
+        prices[name] = {}
+        for coin in COINS:
+            pair = f"{coin}/USDT"
+            try:
+                ticker = exchange.fetch_ticker(pair)
+                orderbook = exchange.fetch_order_book(pair)
+                price = ticker['ask']
+                volume = orderbook['asks'][0][1] if orderbook['asks'] else 0
+                withdraw_fee = 0.5  # Можеш реалізувати API перевірки реальної комісії
+                prices[name][coin] = {
+                    "price": round(price, 2),  # Округлюємо до цілої суми
+                    "volume": round(volume, 2),
+                    "withdraw_fee": withdraw_fee,
+                    "network": "TRC20",
+                    "is_withdrawable": True,
+                    "transfer_time": f"{10 + hash(coin + name) % 20} min"
+                }
+            except Exception as e:
+                print(f"❌ Помилка {pair} на {name}: {e}")
     return prices
 
 # Пошук можливостей арбітражу
 def find_arbitrage_opportunities(prices, filters):
     opportunities = []
-    for coin in prices[EXCHANGES[0]]:
+    for coin in COINS:
         for buy_ex in EXCHANGES:
             for sell_ex in EXCHANGES:
                 if buy_ex == sell_ex:
@@ -32,21 +53,26 @@ def find_arbitrage_opportunities(prices, filters):
                 if not filters['exchanges_sell'].get(sell_ex, True):
                     continue
 
-                buy_data = prices[buy_ex].get(coin)
-                sell_data = prices[sell_ex].get(coin)
+                buy_data = prices.get(buy_ex, {}).get(coin)
+                sell_data = prices.get(sell_ex, {}).get(coin)
+
                 if not buy_data or not sell_data:
                     continue
 
                 spread = ((sell_data['price'] - buy_data['price']) / buy_data['price']) * 100
-                if spread >= filters['min_profit'] and buy_data['volume'] >= filters['min_volume']:
+                if spread >= filters['min_profit']:
+                    volume_usdt = min(buy_data['volume'] * buy_data['price'], filters['budget'])
+                    if volume_usdt < 5:  # Мінімальний meaningful обсяг
+                        continue
+
                     opportunities.append({
                         "coin": coin,
                         "buy_exchange": buy_ex,
                         "sell_exchange": sell_ex,
-                        "buy_price": buy_data['price'],
-                        "sell_price": sell_data['price'],
+                        "buy_price": int(buy_data['price']),
+                        "sell_price": int(sell_data['price']),
                         "spread": round(spread, 2),
-                        "volume": buy_data['volume'],
+                        "volume": round(volume_usdt, 2),
                         "network": buy_data['network'],
                         "withdraw_fee": buy_data['withdraw_fee'],
                         "is_withdrawable": buy_data['is_withdrawable'],
