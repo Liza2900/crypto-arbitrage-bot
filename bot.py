@@ -9,6 +9,7 @@ from filters import (
     EXCHANGES
 )
 from arbitrage import fetch_prices_from_exchanges, find_arbitrage_opportunities
+import random
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -33,7 +34,8 @@ def default_filters():
         'exchanges_buy': {ex: True for ex in EXCHANGES},
         'exchanges_sell': {ex: True for ex in EXCHANGES},
         'max_lifetime': 30,
-        'last_search_id': None
+        'last_search_id': None,
+        'sort_random': True
     }
 
 # Команда /start
@@ -73,6 +75,7 @@ async def handle_manual_input(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     filters = context.user_data.get('filters', default_filters())
     filters[field] = value
+    context.user_data['filters'] = filters
     await update.message.reply_text("✅ Змінено фільтр.", reply_markup=build_filters_menu(filters))
 
 # Команда /search
@@ -100,12 +103,16 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     signals = find_arbitrage_opportunities(prices, filters)
     logger.info(f"✅ Знайдено {len(signals)} можливих сигналів")
 
-    # Фільтруємо великі монети
     signals = [s for s in signals if s['coin'] not in ('BTC', 'ETH')]
 
     if not signals:
         await update.message.reply_text("❌ Немає можливостей арбітражу за поточними фільтрами.")
         return
+
+    if filters.get('sort_random', True):
+        random.shuffle(signals)
+    else:
+        signals.sort(key=lambda s: s['spread'], reverse=True)
 
     context.user_data['signals'] = signals
     context.user_data['signal_index'] = 0
@@ -126,7 +133,10 @@ async def send_signal(send_func, signal, filters):
         f"✅ Вивід доступний: <b>{'✅' if signal.get('is_withdrawable', True) else '❌'}</b>\n"
         f"⏱ Час переказу: <code>{signal.get('transfer_time', 'N/A')}</code>\n"
     )
-    keyboard = [[InlineKeyboardButton("➡️ Наступний", callback_data="next_signal")]]
+    keyboard = [
+        [InlineKeyboardButton("➡️ Наступний", callback_data="next_signal")],
+        [InlineKeyboardButton("🔁 Оновити", callback_data="refresh_signals")]
+    ]
     await send_func(msg, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def handle_next_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,6 +152,11 @@ async def handle_next_signal(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data['signal_index'] = index
     await send_signal(query.edit_message_text, signals[index], context.user_data.get('filters', default_filters()))
 
+async def handle_refresh_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await search(query, context)
+
 # FastAPI app
 app = FastAPI()
 application = Application.builder().token(TOKEN).build()
@@ -151,8 +166,9 @@ application.add_handler(CommandHandler("search", search))
 application.add_handler(CommandHandler("filters", handle_text_commands))
 application.add_handler(CallbackQueryHandler(handle_filter_callback))
 application.add_handler(CallbackQueryHandler(handle_next_signal, pattern="^next_signal$"))
-application.add_handler(MessageHandler(tg_filters.TEXT & (~tg_filters.COMMAND), handle_text_commands))
+application.add_handler(CallbackQueryHandler(handle_refresh_signal, pattern="^refresh_signals$"))
 application.add_handler(MessageHandler(tg_filters.TEXT & (~tg_filters.COMMAND), handle_manual_input))
+application.add_handler(MessageHandler(tg_filters.TEXT & (~tg_filters.COMMAND), handle_text_commands))
 
 @app.on_event("startup")
 async def startup():
