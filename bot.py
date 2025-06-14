@@ -133,10 +133,7 @@ async def send_signal(send_func, signal, filters):
         f"✅ Вивід доступний: <b>{'✅' if signal.get('is_withdrawable', True) else '❌'}</b>\n"
         f"⏱ Час переказу: <code>{signal.get('transfer_time', 'N/A')}</code>\n"
     )
-    keyboard = [
-        [InlineKeyboardButton("➡️ Наступний", callback_data="next_signal")],
-        [InlineKeyboardButton("🔁 Оновити", callback_data="refresh_signals")]
-    ]
+    keyboard = [[InlineKeyboardButton("➡️ Наступний", callback_data="next_signal")]]
     await send_func(msg, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def handle_next_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -152,11 +149,6 @@ async def handle_next_signal(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data['signal_index'] = index
     await send_signal(query.edit_message_text, signals[index], context.user_data.get('filters', default_filters()))
 
-async def handle_refresh_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await search(query, context)
-
 # FastAPI app
 app = FastAPI()
 application = Application.builder().token(TOKEN).build()
@@ -166,9 +158,15 @@ application.add_handler(CommandHandler("search", search))
 application.add_handler(CommandHandler("filters", handle_text_commands))
 application.add_handler(CallbackQueryHandler(handle_filter_callback))
 application.add_handler(CallbackQueryHandler(handle_next_signal, pattern="^next_signal$"))
-application.add_handler(CallbackQueryHandler(handle_refresh_signal, pattern="^refresh_signals$"))
-application.add_handler(MessageHandler(tg_filters.TEXT & (~tg_filters.COMMAND), handle_manual_input))
-application.add_handler(MessageHandler(tg_filters.TEXT & (~tg_filters.COMMAND), handle_text_commands))
+
+# Об'єднаний хендлер
+async def unified_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if 'awaiting_input' in context.user_data:
+        await handle_manual_input(update, context)
+    else:
+        await handle_text_commands(update, context)
+
+application.add_handler(MessageHandler(tg_filters.TEXT & (~tg_filters.COMMAND), unified_text_handler))
 
 @app.on_event("startup")
 async def startup():
