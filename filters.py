@@ -1,9 +1,9 @@
+# filters.py
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-# Біржі
 EXCHANGES = ["KuCoin", "MEXC", "Bitget", "OKX", "BingX", "Gate.io", "Bybit"]
 
-# Меню фільтрів
 def build_filters_menu(filters):
     buttons = [
         [InlineKeyboardButton(f"💰 Мін. профіт: {filters['min_profit']}%", callback_data="set_min_profit")],
@@ -16,7 +16,15 @@ def build_filters_menu(filters):
     ]
     return InlineKeyboardMarkup(buttons)
 
-# Обробка натискань фільтрів
+def build_exchange_toggle_menu(filters, mode):
+    exchanges = filters[f'exchanges_{mode}']
+    rows = [
+        [InlineKeyboardButton(f"{'✅' if enabled else '❌'} {ex}", callback_data=f"toggle_{mode}_{ex}")]
+        for ex, enabled in exchanges.items()
+    ]
+    rows.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_filters")])
+    return InlineKeyboardMarkup(rows)
+
 async def handle_filter_callback(update, context):
     query = update.callback_query
     await query.answer()
@@ -45,45 +53,43 @@ async def handle_filter_callback(update, context):
     elif data == "set_max_lifetime":
         filters['max_lifetime'] += 10
     elif data == "edit_exchanges_buy":
-        await query.edit_message_text("⚙️ Налаштування бірж купівлі: (не реалізовано)")
+        await query.edit_message_text(
+            "⚙️ Увімкніть/вимкніть біржі для **купівлі**:",
+            reply_markup=build_exchange_toggle_menu(filters, "buy"),
+            parse_mode="Markdown"
+        )
         return
     elif data == "edit_exchanges_sell":
-        await query.edit_message_text("⚙️ Налаштування бірж продажу: (не реалізовано)")
+        await query.edit_message_text(
+            "⚙️ Увімкніть/вимкніть біржі для **продажу**:",
+            reply_markup=build_exchange_toggle_menu(filters, "sell"),
+            parse_mode="Markdown"
+        )
         return
+    elif data == "back_to_filters":
+        await query.edit_message_text(
+            "⬇️ Меню фільтрів:",
+            reply_markup=build_filters_menu(filters)
+        )
+        return
+    else:
+        # toggle_exchange_buy_KuCoin
+        if data.startswith("toggle_buy_"):
+            ex = data.replace("toggle_buy_", "")
+            filters['exchanges_buy'][ex] = not filters['exchanges_buy'][ex]
+            await query.edit_message_reply_markup(
+                reply_markup=build_exchange_toggle_menu(filters, "buy")
+            )
+            context.user_data['filters'] = filters
+            return
+        elif data.startswith("toggle_sell_"):
+            ex = data.replace("toggle_sell_", "")
+            filters['exchanges_sell'][ex] = not filters['exchanges_sell'][ex]
+            await query.edit_message_reply_markup(
+                reply_markup=build_exchange_toggle_menu(filters, "sell")
+            )
+            context.user_data['filters'] = filters
+            return
 
     context.user_data['filters'] = filters
     await query.edit_message_reply_markup(reply_markup=build_filters_menu(filters))
-
-# Заглушка — заміни пізніше реальною логікою з arbitrage.py
-async def fetch_prices_from_exchanges():
-    return {
-        "KuCoin": [
-            {"symbol": "DOGE/USDT", "price": 0.125, "volume": 1000},
-        ],
-        "MEXC": [
-            {"symbol": "DOGE/USDT", "price": 0.128, "volume": 1200},
-        ]
-    }
-
-def find_arbitrage_opportunities(prices, filters):
-    opportunities = []
-    for coin in ["DOGE"]:
-        kucoin_price = next((x['price'] for x in prices["KuCoin"] if coin in x['symbol']), None)
-        mexc_price = next((x['price'] for x in prices["MEXC"] if coin in x['symbol']), None)
-        if kucoin_price and mexc_price:
-            spread = ((mexc_price - kucoin_price) / kucoin_price) * 100
-            if spread >= filters['min_profit']:
-                opportunities.append({
-                    'coin': coin,
-                    'buy_exchange': "KuCoin",
-                    'sell_exchange': "MEXC",
-                    'buy_price': kucoin_price,
-                    'sell_price': mexc_price,
-                    'spread': round(spread, 2),
-                    'volume': 100,
-                    'network': "TRC20",
-                    'withdraw_fee': 1.0,
-                    'is_withdrawable': True,
-                    'transfer_time': "5 хв"
-                })
-    return opportunities
