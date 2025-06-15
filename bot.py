@@ -59,6 +59,10 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(msg)
 
+async def filters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    filters = context.user_data.get("filters", DEFAULT_FILTERS.copy())
+    await update.message.reply_text("⚙️ Налаштування фільтрів:", reply_markup=build_filters_menu(filters))
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -76,6 +80,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Введи новий бюджет у $:")
     elif query.data == "refresh":
         await search(update, context)
+    elif query.data == "show_filters":
+        await query.edit_message_text("⚙️ Налаштування фільтрів:", reply_markup=build_filters_menu(filters))
     else:
         await query.edit_message_text("⚙️ Фільтри поки що не змінюються. У розробці.")
 
@@ -97,6 +103,7 @@ if __name__ == "__main__":
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("search", search))
+    app.add_handler(CommandHandler("filters", filters_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_input_handler))
 
