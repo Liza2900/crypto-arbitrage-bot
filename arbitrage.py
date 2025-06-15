@@ -44,6 +44,7 @@ async def fetch_prices_from_exchanges():
 
 def find_arbitrage_opportunities(prices, filters):
     opportunities = []
+    shown_pairs = set()
     for coin in COINS:
         for buy_ex in EXCHANGES:
             for sell_ex in EXCHANGES:
@@ -53,6 +54,11 @@ def find_arbitrage_opportunities(prices, filters):
                     continue
                 if not filters['exchanges_sell'].get(sell_ex, True):
                     continue
+
+                pair_id = (coin, buy_ex, sell_ex)
+                if pair_id in shown_pairs:
+                    continue
+                shown_pairs.add(pair_id)
 
                 buy_data = prices.get(buy_ex, {}).get(coin)
                 sell_data = prices.get(sell_ex, {}).get(coin)
@@ -80,4 +86,3 @@ def find_arbitrage_opportunities(prices, filters):
                         "transfer_time": buy_data['transfer_time']
                     })
     return opportunities
-
