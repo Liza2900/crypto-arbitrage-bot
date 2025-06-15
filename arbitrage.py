@@ -1,7 +1,7 @@
 import ccxt
 import asyncio
 
-# Біржі для арбітражу
+# Біржі для арбітражу (без Bybit)
 EXCHANGES = {
     "KuCoin": ccxt.kucoin(),
     "MEXC": ccxt.mexc(),
@@ -9,18 +9,17 @@ EXCHANGES = {
     "Bitget": ccxt.bitget(),
     "BingX": ccxt.bingx(),
     "Gate.io": ccxt.gateio(),
-    "Bybit": ccxt.bybit(),
 }
 
 # Комісії за вивід по біржах (умовні приклади, краще оновлювати динамічно)
 WITHDRAW_FEES = {
-    "DOGE": {"KuCoin": 5, "MEXC": 4, "OKX": 5, "Bitget": 3, "BingX": 2, "Gate.io": 5, "Bybit": 6},
-    "XRP": {"KuCoin": 0.25, "MEXC": 0.2, "OKX": 0.25, "Bitget": 0.15, "BingX": 0.1, "Gate.io": 0.25, "Bybit": 0.3},
-    "SOL": {"KuCoin": 0.01, "MEXC": 0.01, "OKX": 0.01, "Bitget": 0.005, "BingX": 0.005, "Gate.io": 0.01, "Bybit": 0.01},
-    "ALGO": {"KuCoin": 0.01, "MEXC": 0.01, "OKX": 0.01, "Bitget": 0.01, "BingX": 0.01, "Gate.io": 0.01, "Bybit": 0.01},
-    "TRX": {"KuCoin": 1, "MEXC": 1, "OKX": 1, "Bitget": 1, "BingX": 1, "Gate.io": 1, "Bybit": 1},
-    "ARB": {"KuCoin": 0.1, "MEXC": 0.1, "OKX": 0.1, "Bitget": 0.1, "BingX": 0.1, "Gate.io": 0.1, "Bybit": 0.1},
-    "LINK": {"KuCoin": 0.3, "MEXC": 0.3, "OKX": 0.3, "Bitget": 0.2, "BingX": 0.2, "Gate.io": 0.3, "Bybit": 0.35},
+    "DOGE": {"KuCoin": 5, "MEXC": 4, "OKX": 5, "Bitget": 3, "BingX": 2, "Gate.io": 5},
+    "XRP": {"KuCoin": 0.25, "MEXC": 0.2, "OKX": 0.25, "Bitget": 0.15, "BingX": 0.1, "Gate.io": 0.25},
+    "SOL": {"KuCoin": 0.01, "MEXC": 0.01, "OKX": 0.01, "Bitget": 0.005, "BingX": 0.005, "Gate.io": 0.01},
+    "ALGO": {"KuCoin": 0.01, "MEXC": 0.01, "OKX": 0.01, "Bitget": 0.01, "BingX": 0.01, "Gate.io": 0.01},
+    "TRX": {"KuCoin": 1, "MEXC": 1, "OKX": 1, "Bitget": 1, "BingX": 1, "Gate.io": 1},
+    "ARB": {"KuCoin": 0.1, "MEXC": 0.1, "OKX": 0.1, "Bitget": 0.1, "BingX": 0.1, "Gate.io": 0.1},
+    "LINK": {"KuCoin": 0.3, "MEXC": 0.3, "OKX": 0.3, "Bitget": 0.2, "BingX": 0.2, "Gate.io": 0.3},
 }
 
 # Перелік монет (без BTC та ETH)
@@ -105,4 +104,3 @@ def find_arbitrage_opportunities(prices, filters):
                         "transfer_time": buy_data['transfer_time']
                     })
     return sorted(opportunities, key=lambda x: -x['spread'])[:2]  # топ-2 арбітражі
-
