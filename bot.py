@@ -5,6 +5,9 @@ from telegram.ext import (ApplicationBuilder, ContextTypes, CommandHandler,
                           MessageHandler, CallbackQueryHandler, filters)
 from arbitrage import fetch_prices_from_exchanges, find_arbitrage_opportunities, EXCHANGES
 
+from dotenv import load_dotenv
+load_dotenv()
+
 TOKEN = os.getenv("BOT_TOKEN")
 
 logging.basicConfig(level=logging.INFO)
