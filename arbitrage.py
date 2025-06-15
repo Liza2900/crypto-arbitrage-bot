@@ -31,8 +31,17 @@ async def fetch_prices_from_exchanges():
     prices = {}
     for name, exchange in EXCHANGES.items():
         prices[name] = {}
+        try:
+            markets = exchange.load_markets()
+        except Exception as e:
+            print(f"⚠️ Не вдалося завантажити ринки для {name}: {e}")
+            continue
+
         for coin in COINS:
             pair = f"{coin}/USDT"
+            if pair not in markets:
+                continue
+
             try:
                 ticker = exchange.fetch_ticker(pair)
                 orderbook = exchange.fetch_order_book(pair)
@@ -40,19 +49,18 @@ async def fetch_prices_from_exchanges():
                 volume = orderbook['asks'][0][1] if orderbook['asks'] else 0
                 withdraw_fee = WITHDRAW_FEES.get(coin, {}).get(name, 0.5)
                 prices[name][coin] = {
-                    "price": int(price),  # ціна без десяткових
-                    "volume": round(volume * price, 2),  # обсяг у USDT
+                    "price": int(price),
+                    "volume": round(volume * price, 2),
                     "withdraw_fee": withdraw_fee,
                     "network": "TRC20",
                     "is_withdrawable": True,
                     "transfer_time": f"{10 + hash(coin + name) % 20} min"
                 }
             except Exception as e:
-                print(f"❌ Error fetching {pair} from {name}: {e}")
+                print(f"❌ Помилка отримання {pair} з {name}: {e}")
     return prices
 
 # Пошук можливостей арбітражу
-
 def find_arbitrage_opportunities(prices, filters):
     opportunities = []
     shown_pairs = set()
@@ -97,3 +105,4 @@ def find_arbitrage_opportunities(prices, filters):
                         "transfer_time": buy_data['transfer_time']
                     })
     return sorted(opportunities, key=lambda x: -x['spread'])[:2]  # топ-2 арбітражі
+
