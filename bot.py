@@ -29,6 +29,10 @@ def build_filters_menu(filters):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привіт! Натисни /search, щоб знайти арбітражні можливості.")
 
+async def filters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    filters = context.user_data.get("filters", DEFAULT_FILTERS.copy())
+    await update.message.reply_text("🔧 Поточні фільтри:", reply_markup=build_filters_menu(filters))
+
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filters = context.user_data.get("filters", DEFAULT_FILTERS.copy())
     for key, value in DEFAULT_FILTERS.items():
@@ -59,10 +63,6 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(msg)
 
-async def filters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    filters = context.user_data.get("filters", DEFAULT_FILTERS.copy())
-    await update.message.reply_text("⚙️ Налаштування фільтрів:", reply_markup=build_filters_menu(filters))
-
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -80,8 +80,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Введи новий бюджет у $:")
     elif query.data == "refresh":
         await search(update, context)
-    elif query.data == "show_filters":
-        await query.edit_message_text("⚙️ Налаштування фільтрів:", reply_markup=build_filters_menu(filters))
     else:
         await query.edit_message_text("⚙️ Фільтри поки що не змінюються. У розробці.")
 
