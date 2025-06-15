@@ -1,4 +1,4 @@
-python-telegram-bot>=20.0
-fastapi
-uvicorn
-ccxt
+python-telegram-bot[webhooks]==20.8
+aiohttp==3.9.5
+httpx==0.27.0
+ccxt==4.1.98
