@@ -83,6 +83,8 @@ def find_arbitrage_opportunities(prices, filters):
 
                 if not buy_data or not sell_data:
                     continue
+                if buy_data['price'] == 0:
+                    continue
 
                 spread = ((sell_data['price'] - buy_data['price']) / buy_data['price']) * 100
                 if spread >= filters['min_profit']:
@@ -104,3 +106,4 @@ def find_arbitrage_opportunities(prices, filters):
                         "transfer_time": buy_data['transfer_time']
                     })
     return sorted(opportunities, key=lambda x: -x['spread'])[:2]  # топ-2 арбітражі
+
