@@ -62,7 +62,35 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("⚙️ Фільтри поки що не змінюються. У розробці.")
+
+    filters = context.user_data.get("filters", DEFAULT_FILTERS.copy())
+
+    if query.data == "set_min_profit":
+        context.user_data["awaiting"] = "min_profit"
+        await query.edit_message_text("Введи новий мінімальний прибуток у %:")
+    elif query.data == "set_min_volume":
+        context.user_data["awaiting"] = "min_volume"
+        await query.edit_message_text("Введи новий мінімальний обсяг у $:")
+    elif query.data == "set_budget":
+        context.user_data["awaiting"] = "budget"
+        await query.edit_message_text("Введи новий бюджет у $:")
+    elif query.data == "refresh":
+        await search(update, context)
+    else:
+        await query.edit_message_text("⚙️ Фільтри поки що не змінюються. У розробці.")
+
+async def text_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    awaiting = context.user_data.get("awaiting")
+    if not awaiting:
+        return
+
+    try:
+        value = float(update.message.text)
+        context.user_data.setdefault("filters", DEFAULT_FILTERS.copy())[awaiting] = value
+        context.user_data["awaiting"] = None
+        await update.message.reply_text(f"✅ Фільтр '{awaiting}' оновлено до {value}.", reply_markup=build_filters_menu(context.user_data["filters"]))
+    except ValueError:
+        await update.message.reply_text("❌ Введено не число. Спробуй ще раз.")
 
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
@@ -70,6 +98,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("search", search))
     app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_input_handler))
 
     app.run_webhook(
         listen="0.0.0.0",
