@@ -30,7 +30,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привіт! Натисни /search, щоб знайти арбітражні можливості.")
 
 async def filters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    filters = context.user_data.get("filters", DEFAULT_FILTERS.copy())
+    filters = context.user_data.get("filters")
+    if filters is None:
+        filters = DEFAULT_FILTERS.copy()
+        context.user_data["filters"] = filters
+    logger.info(f"Поточні фільтри: {filters}")
     await update.message.reply_text("🔧 Поточні фільтри:", reply_markup=build_filters_menu(filters))
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -67,14 +71,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    filters = context.user_data.get("filters", DEFAULT_FILTERS.copy())
+    filters = context.user_data.get("filters")
+    if filters is None:
+        filters = DEFAULT_FILTERS.copy()
+        context.user_data["filters"] = filters
 
     if query.data == "set_min_profit":
         context.user_data["awaiting"] = "min_profit"
         await query.edit_message_text("Введи новий мінімальний прибуток у %:")
     elif query.data == "set_min_volume":
         context.user_data["awaiting"] = "min_volume"
-        await query.edit_message_text("Введи новий мінімальний обсяг у $:")
+        await query.edit_message_text("Введи новий мінімальний обсяг у $:\n\nℹ️ Рекомендуємо 10–30$ для бюджету до 100$")
     elif query.data == "set_budget":
         context.user_data["awaiting"] = "budget"
         await query.edit_message_text("Введи новий бюджет у $:")
@@ -110,4 +117,3 @@ if __name__ == "__main__":
         port=int(os.environ.get("PORT", 10000)),
         webhook_url=f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}/"
     )
-
