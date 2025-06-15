@@ -12,8 +12,8 @@ EXCHANGES = {
     "Bybit": ccxt.bybit(),
 }
 
-# Менш ліквідні та нові монети (без BTC та ETH)
-COINS = ["ARB", "TRX", "DOGE", "SOL", "XRP", "ALGO", "LINK"]
+# Перелік монет (без BTC та ETH)
+COINS = ["DOGE", "XRP", "SOL", "ALGO", "TRX", "ARB", "LINK"]
 
 # Асинхронне отримання цін з усіх бірж
 async def fetch_prices_from_exchanges():
@@ -27,20 +27,21 @@ async def fetch_prices_from_exchanges():
                 orderbook = exchange.fetch_order_book(pair)
                 price = ticker['ask']
                 volume = orderbook['asks'][0][1] if orderbook['asks'] else 0
-                withdraw_fee = 0.5  # Можеш реалізувати API перевірки реальної комісії
+                withdraw_fee = 0.5  # Можна оновити через окреме API
                 prices[name][coin] = {
-                    "price": round(price, 2),  # Округлюємо до цілої суми
-                    "volume": round(volume, 2),
+                    "price": int(price),  # ціна без десяткових
+                    "volume": round(volume * price, 2),  # обсяг у USDT
                     "withdraw_fee": withdraw_fee,
                     "network": "TRC20",
                     "is_withdrawable": True,
                     "transfer_time": f"{10 + hash(coin + name) % 20} min"
                 }
             except Exception as e:
-                print(f"❌ Помилка {pair} на {name}: {e}")
+                print(f"❌ Error fetching {pair} from {name}: {e}")
     return prices
 
 # Пошук можливостей арбітражу
+
 def find_arbitrage_opportunities(prices, filters):
     opportunities = []
     for coin in COINS:
@@ -61,21 +62,22 @@ def find_arbitrage_opportunities(prices, filters):
 
                 spread = ((sell_data['price'] - buy_data['price']) / buy_data['price']) * 100
                 if spread >= filters['min_profit']:
-                    volume_usdt = min(buy_data['volume'] * buy_data['price'], filters['budget'])
-                    if volume_usdt < 5:  # Мінімальний meaningful обсяг
+                    volume = min(filters['budget'], buy_data['volume'])
+                    if volume < 5:
                         continue
 
                     opportunities.append({
                         "coin": coin,
                         "buy_exchange": buy_ex,
                         "sell_exchange": sell_ex,
-                        "buy_price": int(buy_data['price']),
-                        "sell_price": int(sell_data['price']),
+                        "buy_price": buy_data['price'],
+                        "sell_price": sell_data['price'],
                         "spread": round(spread, 2),
-                        "volume": round(volume_usdt, 2),
+                        "volume": round(volume, 2),
                         "network": buy_data['network'],
                         "withdraw_fee": buy_data['withdraw_fee'],
                         "is_withdrawable": buy_data['is_withdrawable'],
                         "transfer_time": buy_data['transfer_time']
                     })
     return opportunities
+
