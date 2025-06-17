@@ -1,24 +1,31 @@
-from kucoin.client import Client
+import aiohttp
 import os
 
-KUCOIN_API_KEY = os.getenv("KUCOIN_API_KEY")
-KUCOIN_API_SECRET = os.getenv("KUCOIN_API_SECRET")
-KUCOIN_API_PASSPHRASE = os.getenv("KUCOIN_API_PASSPHRASE")
+API_KEY = os.getenv("KUCOIN_API_KEY")
+API_SECRET = os.getenv("KUCOIN_API_SECRET")
+API_PASSPHRASE = os.getenv("KUCOIN_API_PASSPHRASE")
+BASE_URL = "https://api.kucoin.com"
 
-client = Client(KUCOIN_API_KEY, KUCOIN_API_SECRET, KUCOIN_API_PASSPHRASE)
+async def get_prices():
+    url = f"{BASE_URL}/api/v1/market/allTickers"
+    headers = {
+        "Accept": "application/json"
+    }
 
-async def get_kucoin_prices():
-    result = {}
-    try:
-        tickers = client.get_all_tickers()["ticker"]
-        for t in tickers:
-            symbol = t["symbol"]
-            if symbol.endswith("-USDT"):
-                coin = symbol.replace("-USDT", "")
-                result[coin] = {
-                    "price": float(t["last"]),
-                    "volume": float(t["volValue"])  # USDT volume
-                }
-    except Exception as e:
-        print("KuCoin API error:", e)
-    return result
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as response:
+            data = await response.json()
+            if "data" not in data or "ticker" not in data["data"]:
+                return {}
+
+            result = {}
+            for ticker in data["data"]["ticker"]:
+                symbol = ticker["symbol"]
+                if symbol.endswith("-USDT"):
+                    coin = symbol.replace("-USDT", "")
+                    try:
+                        price = float(ticker["last"])
+                        result[coin] = price
+                    except:
+                        continue
+            return result
