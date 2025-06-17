@@ -23,7 +23,6 @@ def get_user_filters(chat_id):
         return DEFAULT_FILTERS.copy()
 
     user_filters = data.get(str(chat_id), {})
-    # доповнити відсутні ключі значеннями за замовчуванням
     full_filters = DEFAULT_FILTERS.copy()
     full_filters.update(user_filters)
     return full_filters
@@ -50,3 +49,11 @@ def settings_keyboard(filters):
         [InlineKeyboardButton("⚙️ Увімкнені біржі", callback_data="toggle_exchanges")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="start")]
     ])
+
+def exchanges_keyboard(current_exchanges):
+    rows = []
+    for exchange in DEFAULT_FILTERS["enabled_exchanges"]:
+        status = "✅" if exchange in current_exchanges else "❌"
+        rows.append([InlineKeyboardButton(f"{status} {exchange}", callback_data=f"toggle_{exchange}")])
+    rows.append([InlineKeyboardButton("⬅️ Назад", callback_data="settings")])
+    return InlineKeyboardMarkup(rows)
