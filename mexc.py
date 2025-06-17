@@ -1,26 +1,23 @@
-import aiohttp
-import os
+import httpx
 
-MEXC_BASE_URL = "https://api.mexc.com"
+async def get_prices():
+    url = "https://api.mexc.com/api/v3/ticker/bookTicker"
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        data = response.json()
 
-async def get_mexc_prices():
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"{MEXC_BASE_URL}/api/v3/ticker/bookTicker") as resp:
-            data = await resp.json()
-            return {
-                item["symbol"]: {
-                    "bid": float(item["bidPrice"]),
-                    "ask": float(item["askPrice"])
-                }
-                for item in data if item["symbol"].endswith("USDT")
+    result = {}
+    for item in data:
+        symbol = item['symbol']
+        if symbol.endswith("USDT") and not symbol.endswith("3LUSDT") and not symbol.endswith("3SUSDT"):
+            price = float(item['askPrice'])
+            coin = symbol.replace("USDT", "")
+            result[coin] = {
+                "price": price,
+                "volume": 100,  # або реальний обсяг
+                "withdraw_fee": 1,  # або дійсна комісія
+                "network": "TRC20",
+                "transfer_time": "≈5 хв"
             }
 
-# Приклад: отримати комісію виводу
-async def get_mexc_withdraw_fees(symbol: str):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"{MEXC_BASE_URL}/api/v3/capital/config/getall") as resp:
-            data = await resp.json()
-            for item in data:
-                if item["coin"] == symbol:
-                    return item["networkList"]
-    return []
+    return result
