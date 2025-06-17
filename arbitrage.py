@@ -1,3 +1,4 @@
+import logging
 from kucoin import get_prices as get_kucoin_prices
 from mexc import get_prices as get_mexc_prices
 from bitget import get_prices as get_bitget_prices
@@ -5,6 +6,8 @@ from okx import get_prices as get_okx_prices
 from bingx import get_prices as get_bingx_prices
 from gateio import get_prices as get_gateio_prices
 from coinex import get_prices as get_coinex_prices
+
+logger = logging.getLogger(__name__)
 
 EXCHANGES = {
     "KuCoin": get_kucoin_prices,
@@ -22,6 +25,7 @@ async def fetch_prices_from_exchanges(filters):
         try:
             prices[name] = await func()
         except Exception as e:
+            logger.warning(f"Помилка при отриманні цін з {name}: {e}")
             prices[name] = {}
     return prices
 
@@ -35,13 +39,18 @@ def find_arbitrage_opportunities(prices, filters):
                 if coin in sell_prices:
                     buy_price = buy_prices[coin]
                     sell_price = sell_prices[coin]
+                    if buy_price <= 0 or sell_price <= 0:
+                        continue
                     spread = ((sell_price - buy_price) / buy_price) * 100
                     if spread <= 0:
                         continue
                     profit = (spread / 100) * filters["budget"]
                     if profit >= filters.get("min_profit_usd", 1.0):
-                        text = f"{coin}: {buy_exchange} → {sell_exchange}
-Ціна купівлі: {buy_price:.4f}$, Продажу: {sell_price:.4f}$
-📈 Профіт: {spread:.2f}% ≈ {profit:.2f}$"
+                        text = (
+                            f"{coin}: {buy_exchange} → {sell_exchange}\n"
+                            f"Ціна купівлі: {buy_price:.4f}$, Продажу: {sell_price:.4f}$\n"
+                            f"📈 Профіт: {spread:.2f}% ≈ {profit:.2f}$"
+                        )
                         opportunities.append(text)
     return opportunities
+
