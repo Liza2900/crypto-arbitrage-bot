@@ -2,3 +2,4 @@ python-telegram-bot[webhooks]==20.8
 httpx~=0.26.0
 ccxt==4.1.98
 aiohttp
+python-dotenv
