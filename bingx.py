@@ -1,35 +1,23 @@
-import aiohttp
 import os
+import httpx
+from dotenv import load_dotenv
 
-API_KEY = os.getenv("BINGX_API_KEY")
-API_SECRET = os.getenv("BINGX_API_SECRET")
+load_dotenv()
 
-BASE_URL = "https://open-api.bingx.com"
+BINGX_API_URL = "https://open-api.bingx.com/openApi/spot/v1/ticker/24hr"
 
-HEADERS = {
-    "X-BX-APIKEY": API_KEY
-}
-
-async def get_spot_prices():
-    """
-    Отримує спотові ціни (bid/ask) з BingX
-    """
-    url = f"{BASE_URL}/openApi/spot/v1/ticker/price"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=HEADERS) as response:
-            data = await response.json()
-
-            if data.get("code") != 0:
-                raise Exception(f"BingX error: {data.get('msg')}")
-
-            prices = {}
-            for item in data["data"]:
-                symbol = item["symbol"]  # Наприклад: "DOGE-USDT"
-                price = float(item["price"])
-                if "-USDT" in symbol:
-                    coin = symbol.replace("-USDT", "")
-                    prices[coin] = {
-                        "bid": price,   # BingX дає тільки середню ціну, використаємо як bid/ask
-                        "ask": price
-                    }
-            return prices
+async def get_prices():
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(BINGX_API_URL)
+            data = response.json()
+            result = {}
+            for item in data.get("data", []):
+                symbol = item.get("symbol")  # наприклад: BTC-USDT
+                if symbol and symbol.endswith("USDT"):
+                    coin = symbol.replace("USDT", "").replace("-", "").replace("/", "")
+                    result[coin] = float(item.get("lastPrice", 0))
+            return result
+    except Exception as e:
+        print("BingX error:", e)
+        return {}
