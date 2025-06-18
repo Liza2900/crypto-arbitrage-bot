@@ -18,13 +18,14 @@ def get_withdraw_info(exchange_name: str, symbol: str) -> dict:
     }
     """
     try:
+        exchange_name = exchange_name.lower()
         if exchange_name == "kucoin":
             return get_kucoin_withdraw_info(symbol)
         elif exchange_name == "mexc":
             return get_mexc_withdraw_info(symbol)
         elif exchange_name == "okx":
             return get_okx_withdraw_info(symbol)
-        elif exchange_name == "gateio":
+        elif exchange_name == "gate.io" or exchange_name == "gateio":
             return get_gateio_withdraw_info(symbol)
         elif exchange_name == "bingx":
             return get_bingx_withdraw_info(symbol)
