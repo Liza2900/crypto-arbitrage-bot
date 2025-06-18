@@ -7,6 +7,7 @@ from gateio import get_prices as get_gateio_prices
 from coinex import get_prices as get_coinex_prices
 
 from withdraw import get_withdraw_info
+import logging
 
 EXCHANGES = {
     "KuCoin": get_kucoin_prices,
@@ -24,10 +25,11 @@ async def fetch_prices_from_exchanges(filters):
         try:
             prices[name] = await func()
         except Exception as e:
+            logging.warning(f"Помилка при отриманні цін з {name}: {e}")
             prices[name] = {}
     return prices
 
-def find_arbitrage_opportunities(prices, filters):
+async def find_arbitrage_opportunities(prices, filters):
     opportunities = []
     for buy_exchange, buy_prices in prices.items():
         for sell_exchange, sell_prices in prices.items():
@@ -37,39 +39,28 @@ def find_arbitrage_opportunities(prices, filters):
                 if coin in sell_prices:
                     buy_price = buy_prices[coin]
                     sell_price = sell_prices[coin]
-
-                    if buy_price is None or sell_price is None or buy_price == 0:
-                        continue
-
-                    # Отримуємо інфу про вивід із біржі покупки
-                    withdraw_info = get_withdraw_info(buy_exchange, coin)
-                    if not withdraw_info["can_withdraw"]:
-                        continue
-
-                    # Вибираємо найменшу комісію
-                    min_fee = None
-                    best_network = None
-                    for net, fee in withdraw_info["fees"].items():
-                        if min_fee is None or fee < min_fee:
-                            min_fee = fee
-                            best_network = net
-
-                    if min_fee is None:
-                        continue
-
                     spread = ((sell_price - buy_price) / buy_price) * 100
                     if spread <= 0:
                         continue
 
-                    gross_profit = (spread / 100) * filters["budget"]
-                    net_profit = gross_profit - min_fee
+                    profit = (spread / 100) * filters["budget"]
+                    if profit < filters.get("min_profit_usd", 1.0):
+                        continue
 
-                    if net_profit >= filters.get("min_profit_usd", 1.0):
-                        text = (
-                            f"{coin}: {buy_exchange} → {sell_exchange}\n"
-                            f"Купівля: {buy_price:.4f}$ | Продаж: {sell_price:.4f}$\n"
-                            f"Мережа: {best_network} | Комісія: {min_fee:.2f}$\n"
-                            f"📈 Профіт: {spread:.2f}% ≈ {net_profit:.2f}$ (після комісії)"
-                        )
-                        opportunities.append(text)
+                    # Отримати інфу про вивід
+                    withdraw_info = await get_withdraw_info(buy_exchange, coin)
+                    if not withdraw_info["can_withdraw"]:
+                        continue
+
+                    networks = ", ".join(withdraw_info["networks"]) or "невідомо"
+                    fees_str = ", ".join(f"{k}: {v}" for k, v in withdraw_info["fees"].items()) or "-"
+                    time_str = withdraw_info["estimated_time"] or "-"
+
+                    text = f"{coin}: {buy_exchange} → {sell_exchange}\n"
+                    text += f"Ціна купівлі: {buy_price:.4f}$, Продажу: {sell_price:.4f}$\n"
+                    text += f"📈 Профіт: {spread:.2f}% ≈ {profit:.2f}$\n"
+                    text += f"🌐 Мережі: {networks}\n"
+                    text += f"💸 Комісії: {fees_str}\n"
+                    text += f"⏱️ Час переказу: {time_str}"
+                    opportunities.append(text)
     return opportunities
