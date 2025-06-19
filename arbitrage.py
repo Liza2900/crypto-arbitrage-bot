@@ -50,7 +50,7 @@ async def find_arbitrage_opportunities(prices, filters):
                         continue
 
                     # Отримати інфу про вивід
-                    withdraw_info = get_withdraw_info(buy_exchange, coin)
+                    withdraw_info = await get_withdraw_info(buy_exchange, coin) 
                     if not withdraw_info["can_withdraw"]:
                         continue
 
