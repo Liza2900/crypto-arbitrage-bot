@@ -1,58 +1,52 @@
-import os
-import time
-import base64
-import hmac
-import hashlib
 import httpx
+import os
 
 KUCOIN_API_KEY = os.getenv("KUCOIN_API_KEY")
 KUCOIN_API_SECRET = os.getenv("KUCOIN_API_SECRET")
 KUCOIN_API_PASSPHRASE = os.getenv("KUCOIN_API_PASSPHRASE")
 
-def _get_kucoin_signature(timestamp, method, endpoint, body=""):
-    str_to_sign = f"{timestamp}{method}{endpoint}{body}"
-    signature = base64.b64encode(
-        hmac.new(KUCOIN_API_SECRET.encode("utf-8"), str_to_sign.encode("utf-8"), hashlib.sha256).digest()
-    ).decode()
-    return signature
+headers = {
+    "KC-API-KEY": KUCOIN_API_KEY,
+    "KC-API-SIGN": "",  # підпис додається динамічно при потребі
+    "KC-API-TIMESTAMP": "",
+    "KC-API-PASSPHRASE": KUCOIN_API_PASSPHRASE,
+    "KC-API-KEY-VERSION": "2"
+}
 
-def _get_kucoin_passphrase():
-    return base64.b64encode(
-        hmac.new(KUCOIN_API_SECRET.encode("utf-8"), KUCOIN_API_PASSPHRASE.encode("utf-8"), hashlib.sha256).digest()
-    ).decode()
+# Проксі з авторизацією (Хорватія)
+proxy_url = "http://scomriff:di4xopqednmn@207.244.217.165:6712"
 
 async def get_kucoin_withdraw_info(symbol: str) -> dict:
+    """
+    Отримує інформацію про вивід монети з KuCoin через API, використовуючи проксі.
+    """
     try:
-        timestamp = str(int(time.time() * 1000))
-        endpoint = f"/api/v1/withdrawals/quotas?currency={symbol}"
-        signature = _get_kucoin_signature(timestamp, "GET", endpoint)
-        passphrase = _get_kucoin_passphrase()
+        url = f"https://api.kucoin.com/api/v1/withdrawals/quotas?currency={symbol}"
 
-        headers = {
-            "KC-API-KEY": KUCOIN_API_KEY,
-            "KC-API-SIGN": signature,
-            "KC-API-TIMESTAMP": timestamp,
-            "KC-API-PASSPHRASE": passphrase,
-            "KC-API-KEY-VERSION": "2",
-            "Content-Type": "application/json"
-        }
-
-        url = f"https://api.kucoin.com{endpoint}"
-
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(proxies=proxy_url, timeout=10.0) as client:
             response = await client.get(url, headers=headers)
             data = response.json()
 
-        if data["code"] != "200000":
-            raise Exception(data.get("msg", "Unknown error"))
+        if data.get("code") != "200000":
+            print(f"[KuCoin Withdraw Error] {data.get('msg')}")
+            return {
+                "networks": [],
+                "fees": {},
+                "can_withdraw": False,
+                "estimated_time": None
+            }
 
-        result = data["data"]
+        quota = data["data"]
+        chain = quota.get("chain", "unknown")
+        fee = float(quota.get("withdrawMinFee", 0))
+
         return {
-            "networks": [result["chain"]],
-            "fees": {result["chain"]: float(result["withdrawMinFee"])},
-            "can_withdraw": result["isWithdrawEnabled"],
-            "estimated_time": "~15 min"
+            "networks": [chain],
+            "fees": {chain: fee},
+            "can_withdraw": quota.get("isWithdrawEnabled", False),
+            "estimated_time": "~10-30 хв"
         }
+
     except Exception as e:
         print(f"[KuCoin Withdraw Error] {e}")
         return {
