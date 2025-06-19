@@ -1,45 +1,49 @@
+import time
+import hmac
+import hashlib
 import httpx
-import os
+from typing import Dict, List
 
-GATEIO_API_KEY = os.getenv("GATEIO_API_KEY")
-GATEIO_API_SECRET = os.getenv("GATEIO_API_SECRET")
-GATEIO_API_BASE = "https://api.gateio.ws/api/v4"
+API_KEY = "YOUR_GATE_API_KEY"
+API_SECRET = "YOUR_GATE_API_SECRET"
+BASE_URL = "https://api.gate.io"
 
-HEADERS = {
-    "Accept": "application/json",
+headers_template = {
     "Content-Type": "application/json",
-    "KEY": GATEIO_API_KEY,
-    "SIGN": ""
-    # SIGN не потрібен для публічного GET-запиту /wallet/withdraw_status
+    "Accept": "application/json",
+    "KEY": API_KEY
 }
 
-async def get_gateio_withdraw_info(symbol):
-    try:
-        async with httpx.AsyncClient(verify=False, timeout=10) as client:
-            url = f"{GATEIO_API_BASE}/wallet/withdraw_status"
-            resp = await client.get(url, headers=HEADERS)
-            resp.raise_for_status()
-            data = resp.json()
+def sign_request(method: str, path: str, body: str, timestamp: str) -> str:
+    message = f"{method.upper()}\n{path}\n{timestamp}\n{body}"
+    signature = hmac.new(API_SECRET.encode(), message.encode(), hashlib.sha512).hexdigest()
+    return signature
 
-        for coin in data:
-            if coin["currency"] == symbol:
-                return {
-                    "can_withdraw": coin["withdrawable"],
-                    "networks": [coin["chain"]] if "chain" in coin else [],
-                    "fees": {coin["chain"]: float(coin["withdraw_fix"])} if "chain" in coin else {},
-                    "estimated_time": "-"
-                }
-        return {
-            "can_withdraw": False,
-            "networks": [],
-            "fees": {},
-            "estimated_time": None
-        }
-    except Exception as e:
-        print(f"[Gate.io Withdraw Error] {e}")
-        return {
-            "can_withdraw": False,
-            "networks": [],
-            "fees": {},
-            "estimated_time": None
-        }
+async def get_withdraw_info(currency: str) -> Dict:
+    timestamp = str(int(time.time()))
+    method = "GET"
+    path = f"/api/v4/wallet/withdraw_status?currency={currency}"
+    body = ""
+
+    signature = sign_request(method, path, body, timestamp)
+
+    headers = headers_template.copy()
+    headers["Timestamp"] = timestamp
+    headers["SIGN"] = signature
+
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=10.0) as client:
+        try:
+            response = await client.get(path, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Gate.io withdraw error for {currency}: {e}")
+            return {}
+
+async def get_all_gateio_withdraw_info(currencies: List[str]) -> Dict[str, Dict]:
+    result = {}
+    for currency in currencies:
+        info = await get_withdraw_info(currency)
+        if info:
+            result[currency] = info
+    return result
