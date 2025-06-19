@@ -39,6 +39,10 @@ async def find_arbitrage_opportunities(prices, filters):
                 if coin in sell_prices:
                     buy_price = buy_prices[coin]
                     sell_price = sell_prices[coin]
+
+                    if not buy_price or not sell_price:
+                        continue
+
                     spread = ((sell_price - buy_price) / buy_price) * 100
                     if spread <= 0:
                         continue
