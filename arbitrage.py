@@ -39,10 +39,8 @@ async def find_arbitrage_opportunities(prices, filters):
                 if coin in sell_prices:
                     buy_price = buy_prices[coin]
                     sell_price = sell_prices[coin]
-
-                    if not buy_price or not sell_price:
+                    if buy_price == 0:
                         continue
-
                     spread = ((sell_price - buy_price) / buy_price) * 100
                     if spread <= 0:
                         continue
@@ -52,7 +50,7 @@ async def find_arbitrage_opportunities(prices, filters):
                         continue
 
                     # Отримати інфу про вивід
-                    withdraw_info = await get_withdraw_info(buy_exchange, coin)
+                    withdraw_info = get_withdraw_info(buy_exchange, coin)
                     if not withdraw_info["can_withdraw"]:
                         continue
 
