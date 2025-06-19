@@ -39,24 +39,29 @@ async def find_arbitrage_opportunities(prices, filters):
                 if coin in sell_prices:
                     buy_price = buy_prices[coin]
                     sell_price = sell_prices[coin]
-                    if buy_price == 0:
+
+                    if buy_price is None or sell_price is None or buy_price == 0:
                         continue
+
                     spread = ((sell_price - buy_price) / buy_price) * 100
                     if spread <= 0:
                         continue
 
                     profit = (spread / 100) * filters["budget"]
-                    if profit < filters.get("min_profit_usd", 1.0):
-                        continue
+
+                    print(f"{coin} | {buy_exchange} -> {sell_exchange} | Buy: {buy_price:.4f} Sell: {sell_price:.4f} Spread: {spread:.2f}% Profit: {profit:.2f}$")
+
+                    # Тимчасово прибираємо фільтр на min_profit_usd
 
                     # Отримати інфу про вивід
-                    withdraw_info = await get_withdraw_info(buy_exchange, coin) 
-                    if not withdraw_info["can_withdraw"]:
+                    withdraw_info = await get_withdraw_info(buy_exchange, coin)
+                    if not withdraw_info.get("can_withdraw", False):
                         continue
 
-                    networks = ", ".join(withdraw_info["networks"]) or "невідомо"
-                    fees_str = ", ".join(f"{k}: {v}" for k, v in withdraw_info["fees"].items()) or "-"
-                    time_str = withdraw_info["estimated_time"] or "-"
+                    networks = ", ".join(withdraw_info.get("networks", [])) or "невідомо"
+                    fees = withdraw_info.get("fees", {})
+                    fees_str = ", ".join(f"{k}: {v}" for k, v in fees.items()) or "-"
+                    time_str = withdraw_info.get("estimated_time") or "-"
 
                     text = f"{coin}: {buy_exchange} → {sell_exchange}\n"
                     text += f"Ціна купівлі: {buy_price:.4f}$, Продажу: {sell_price:.4f}$\n"
