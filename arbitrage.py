@@ -51,10 +51,12 @@ async def find_arbitrage_opportunities(prices, filters):
 
                     print(f"{coin} | {buy_exchange} -> {sell_exchange} | Buy: {buy_price:.4f} Sell: {sell_price:.4f} Spread: {spread:.2f}% Profit: {profit:.2f}$")
 
-                    # Тимчасово прибираємо фільтр на min_profit_usd
+                    try:
+                        withdraw_info = await get_withdraw_info(buy_exchange, coin)
+                    except TypeError as e:
+                        logging.warning(f"Withdraw info error for {buy_exchange}/{coin}: {e}")
+                        continue
 
-                    # Отримати інфу про вивід
-                    withdraw_info = await get_withdraw_info(buy_exchange, coin)
                     if not withdraw_info.get("can_withdraw", False):
                         continue
 
