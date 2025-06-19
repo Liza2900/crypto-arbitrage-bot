@@ -20,7 +20,7 @@ def sign(params: dict) -> str:
         hashlib.sha256
     ).hexdigest()
 
-def get_bingx_withdraw_info(symbol: str) -> dict:
+async def get_bingx_withdraw_info(symbol: str) -> dict:
     """
     Отримує список доступних мереж для виводу, їхні комісії та статус.
     """
