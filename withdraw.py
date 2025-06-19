@@ -6,7 +6,7 @@ from bingx_withdraw import get_bingx_withdraw_info
 from bitget_withdraw import get_bitget_withdraw_info
 from coinex_withdraw import get_coinex_withdraw_info
 
-def get_withdraw_info(exchange_name: str, symbol: str) -> dict:
+async def get_withdraw_info(exchange_name: str, symbol: str) -> dict:
     """
     Return withdraw info for a specific exchange and symbol.
     Example return:
@@ -20,19 +20,19 @@ def get_withdraw_info(exchange_name: str, symbol: str) -> dict:
     try:
         exchange_name = exchange_name.lower()
         if exchange_name == "kucoin":
-            return get_kucoin_withdraw_info(symbol)
+            return await get_kucoin_withdraw_info(symbol)
         elif exchange_name == "mexc":
-            return get_mexc_withdraw_info(symbol)
+            return await get_mexc_withdraw_info(symbol)
         elif exchange_name == "okx":
-            return get_okx_withdraw_info(symbol)
-        elif exchange_name == "gate.io" or exchange_name == "gateio":
-            return get_gateio_withdraw_info(symbol)
+            return await get_okx_withdraw_info(symbol)
+        elif exchange_name in ("gate.io", "gateio"):
+            return await get_gateio_withdraw_info(symbol)
         elif exchange_name == "bingx":
-            return get_bingx_withdraw_info(symbol)
+            return await get_bingx_withdraw_info(symbol)
         elif exchange_name == "bitget":
-            return get_bitget_withdraw_info(symbol)
+            return await get_bitget_withdraw_info(symbol)
         elif exchange_name == "coinex":
-            return get_coinex_withdraw_info(symbol)
+            return await get_coinex_withdraw_info(symbol)
         else:
             return {
                 "networks": [],
