@@ -1,50 +1,21 @@
 from kucoin_withdraw import get_kucoin_withdraw_info
 from mexc_withdraw import get_mexc_withdraw_info
 from okx_withdraw import get_okx_withdraw_info
-from gateio_withdraw import get_gateio_withdraw_status
 from bingx_withdraw import get_bingx_withdraw_info
 from bitget_withdraw import get_bitget_withdraw_info
+from gateio_withdraw import get_withdraw_info as get_gateio_withdraw_info
 from coinex_withdraw import get_coinex_withdraw_info
 
-async def get_withdraw_info(exchange_name: str, symbol: str) -> dict:
-    """
-    Return withdraw info for a specific exchange and symbol.
-    Example return:
-    {
-        "networks": ["TRC20", "ERC20"],
-        "fees": {"TRC20": 1.0, "ERC20": 5.0},
-        "can_withdraw": True,
-        "estimated_time": "~10 min"
-    }
-    """
-    try:
-        exchange_name = exchange_name.lower()
-        if exchange_name == "kucoin":
-            return await get_kucoin_withdraw_info(symbol)
-        elif exchange_name == "mexc":
-            return await get_mexc_withdraw_info(symbol)
-        elif exchange_name == "okx":
-            return await get_okx_withdraw_info(symbol)
-        elif exchange_name in ("gate.io", "gateio"):
-            return await get_gateio_withdraw_info(symbol)
-        elif exchange_name == "bingx":
-            return await get_bingx_withdraw_info(symbol)
-        elif exchange_name == "bitget":
-            return await get_bitget_withdraw_info(symbol)
-        elif exchange_name == "coinex":
-            return await get_coinex_withdraw_info(symbol)
-        else:
-            return {
-                "networks": [],
-                "fees": {},
-                "can_withdraw": False,
-                "estimated_time": None
-            }
-    except Exception as e:
-        print(f"Withdraw info error for {exchange_name}/{symbol}: {e}")
-        return {
-            "networks": [],
-            "fees": {},
-            "can_withdraw": False,
-            "estimated_time": None
-        }
+# Централізований виклик функцій для кожної біржі
+async def get_withdraw_info(currency: str) -> dict:
+    withdraw_info = {}
+
+    withdraw_info["KuCoin"] = await get_kucoin_withdraw_info(currency)
+    withdraw_info["MEXC"] = await get_mexc_withdraw_info(currency)
+    withdraw_info["OKX"] = await get_okx_withdraw_info(currency)
+    withdraw_info["BingX"] = await get_bingx_withdraw_info(currency)
+    withdraw_info["Bitget"] = await get_bitget_withdraw_info(currency)
+    withdraw_info["Gate.io"] = await get_gateio_withdraw_info(currency)
+    withdraw_info["CoinEx"] = await get_coinex_withdraw_info(currency)
+
+    return withdraw_info
