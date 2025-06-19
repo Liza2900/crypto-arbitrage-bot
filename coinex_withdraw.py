@@ -23,7 +23,7 @@ def make_signature(tonce: str, params: dict) -> str:
     ).hexdigest().upper()
     return signature
 
-def get_coinex_withdraw_info(symbol: str) -> dict:
+async def get_coinex_withdraw_info(symbol: str) -> dict:
     """
     Отримує доступні мережі, комісії, можливість виводу з CoinEx.
     """
