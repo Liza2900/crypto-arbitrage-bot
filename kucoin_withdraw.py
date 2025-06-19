@@ -1,27 +1,57 @@
 import httpx
 import os
+import time
+import hmac
+import hashlib
+import base64
 
 KUCOIN_API_KEY = os.getenv("KUCOIN_API_KEY")
 KUCOIN_API_SECRET = os.getenv("KUCOIN_API_SECRET")
 KUCOIN_API_PASSPHRASE = os.getenv("KUCOIN_API_PASSPHRASE")
 
-headers = {
-    "KC-API-KEY": KUCOIN_API_KEY,
-    "KC-API-SIGN": "",  # підпис додається динамічно при потребі
-    "KC-API-TIMESTAMP": "",
-    "KC-API-PASSPHRASE": KUCOIN_API_PASSPHRASE,
-    "KC-API-KEY-VERSION": "2"
-}
-
-# Проксі з авторизацією (Хорватія)
 proxy_url = "http://scomriff:di4xopqednmn@207.244.217.165:6712"
+
+def sign_request(timestamp: str, method: str, endpoint: str, body: str = "") -> dict:
+    """
+    Створює заголовки з підписом для KuCoin API.
+    """
+    str_to_sign = f"{timestamp}{method.upper()}{endpoint}{body}"
+    signature = base64.b64encode(
+        hmac.new(
+            KUCOIN_API_SECRET.encode("utf-8"),
+            str_to_sign.encode("utf-8"),
+            hashlib.sha256
+        ).digest()
+    ).decode()
+
+    passphrase = base64.b64encode(
+        hmac.new(
+            KUCOIN_API_SECRET.encode("utf-8"),
+            KUCOIN_API_PASSPHRASE.encode("utf-8"),
+            hashlib.sha256
+        ).digest()
+    ).decode()
+
+    return {
+        "KC-API-KEY": KUCOIN_API_KEY,
+        "KC-API-SIGN": signature,
+        "KC-API-TIMESTAMP": timestamp,
+        "KC-API-PASSPHRASE": passphrase,
+        "KC-API-KEY-VERSION": "2",
+        "Content-Type": "application/json"
+    }
 
 async def get_kucoin_withdraw_info(symbol: str) -> dict:
     """
-    Отримує інформацію про вивід монети з KuCoin через API, використовуючи проксі.
+    Отримує інфо про вивід з KuCoin через API з коректними підписами.
     """
     try:
-        url = f"https://api.kucoin.com/api/v1/withdrawals/quotas?currency={symbol}"
+        method = "GET"
+        endpoint = f"/api/v1/withdrawals/quotas?currency={symbol}"
+        url = f"https://api.kucoin.com{endpoint}"
+
+        timestamp = str(int(time.time() * 1000))
+        headers = sign_request(timestamp, method, endpoint)
 
         async with httpx.AsyncClient(proxies=proxy_url, timeout=10.0) as client:
             response = await client.get(url, headers=headers)
@@ -55,3 +85,4 @@ async def get_kucoin_withdraw_info(symbol: str) -> dict:
             "can_withdraw": False,
             "estimated_time": None
         }
+
