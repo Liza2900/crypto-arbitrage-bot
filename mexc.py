@@ -1,23 +1,32 @@
 import httpx
 
+API_URL = "https://api.mexc.com/api/v3/ticker/bookTicker"
+
 async def get_prices():
-    url = "https://api.mexc.com/api/v3/ticker/bookTicker"
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url)
-        data = response.json()
+    prices = {}
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(API_URL)
+            data = resp.json()
 
-    result = {}
-    for item in data:
-        symbol = item['symbol']
-        if symbol.endswith("USDT") and not symbol.endswith("3LUSDT") and not symbol.endswith("3SUSDT"):
-            price = float(item['askPrice'])
-            coin = symbol.replace("USDT", "")
-            result[coin] = {
-                "price": price,
-                "volume": 100,  # або реальний обсяг
-                "withdraw_fee": 1,  # або дійсна комісія
-                "network": "TRC20",
-                "transfer_time": "≈5 хв"
-            }
+        for item in data:
+            symbol = item.get("symbol")
+            bid = item.get("bidPrice")
+            ask = item.get("askPrice")
 
-    return result
+            if not symbol or not bid or not ask:
+                continue
+
+            if symbol.endswith("USDT") and not symbol.endswith("3SUSDT") and not symbol.endswith("3LUSDT"):
+                coin = symbol.replace("USDT", "")
+                try:
+                    buy_price = float(ask)
+                    sell_price = float(bid)
+                    avg_price = (buy_price + sell_price) / 2
+                    prices[coin] = avg_price
+                except (ValueError, TypeError):
+                    continue
+    except Exception as e:
+        import logging
+        logging.warning(f"Помилка при отриманні цін з MEXC: {e}")
+    return prices
